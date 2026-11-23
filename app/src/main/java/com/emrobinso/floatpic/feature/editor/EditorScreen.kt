@@ -523,9 +523,10 @@ private fun HistoryStrip(
                             onLongClick = { onDelete(entry) },
                         ),
                 ) {
-                    if (thumb != null) {
+                    val image = thumb
+                    if (image != null) {
                         androidx.compose.foundation.Image(
-                            bitmap = thumb.asImageBitmap(),
+                            bitmap = image.asImageBitmap(),
                             contentDescription = ctx.getString(R.string.history_open),
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
