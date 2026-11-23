@@ -64,7 +64,6 @@ import com.emrobinso.floatpic.data.Exporter
 import com.emrobinso.floatpic.data.HistoryStore
 import com.emrobinso.floatpic.feature.bubble.BubbleService
 import com.emrobinso.floatpic.ui.rememberHaptics
-import com.emrobinso.floatpic.ui.theme.AppTheme
 import com.emrobinso.floatpic.ui.theme.FloatPicTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -210,8 +209,7 @@ class EditorActivity : ComponentActivity() {
                                 }
                             },
                             onThemeToggle = {
-                                val next = if (ui.theme == AppTheme.PASTEL_MAROON)
-                                    AppTheme.NEUMORPHISM else AppTheme.PASTEL_MAROON
+                                val next = ui.theme.toggled()
                                 vm.setTheme(next)
                                 scope.launch { DraftStore.setTheme(this@EditorActivity, next) }
                             },

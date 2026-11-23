@@ -21,7 +21,7 @@ data class HistoryEntry(
     val source: String,
     val thumb: String,
     val state: String,
-    val theme: String = AppTheme.PASTEL_MAROON.name,
+    val theme: String = AppTheme.MAROON_DARK.name,
 )
 
 /**
@@ -81,7 +81,7 @@ object HistoryStore {
         val state = runCatching {
             json.decodeFromString(EditorState.serializer(), entry.state)
         }.getOrNull() ?: return null
-        val theme = runCatching { AppTheme.valueOf(entry.theme) }.getOrDefault(AppTheme.PASTEL_MAROON)
+        val theme = runCatching { AppTheme.valueOf(entry.theme) }.getOrDefault(AppTheme.MAROON_DARK)
         return DraftSnapshot(sourceUri = entry.source, state = state, theme = theme)
     }
 

@@ -212,6 +212,58 @@ object FloatIcons {
         }
     }
 
+    /** Aspect ratio: a frame with a ratio glyph inside. */
+    @Composable
+    fun Ratio(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(22.dp)) {
+            val s = size.minDimension / VIEW
+            roundRectStroke(3.2f, 5.2f, 17.6f, 13.6f, 3f, s, c, 1.7f)
+            // a smaller 4:3 window inside, conveying "ratio choice"
+            drawRoundRect(
+                color = c.copy(alpha = 0.45f),
+                topLeft = Offset(6.6f * s, 8.4f * s),
+                size = Size(10.8f * s, 7.2f * s),
+                cornerRadius = CornerRadius(1.4f * s),
+                style = Stroke(width = 1.3f * s),
+            )
+            line(6.6f, 12f, 17.4f, 12f, s, c.copy(alpha = 0.45f), 1.1f)
+        }
+    }
+
+    @Composable
+    fun Sun(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(22.dp)) {
+            val s = size.minDimension / VIEW
+            drawCircle(c, 4.2f * s, Offset(12f * s, 12f * s), style = Stroke(1.7f * s))
+            for (i in 0 until 8) {
+                val a = Math.toRadians(i * 45.0)
+                val dx = kotlin.math.cos(a).toFloat()
+                val dy = kotlin.math.sin(a).toFloat()
+                line(12f + dx * 6.6f, 12f + dy * 6.6f, 12f + dx * 9f, 12f + dy * 9f, s, c, 1.6f)
+            }
+        }
+    }
+
+    @Composable
+    fun Moon(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(22.dp)) {
+            val s = size.minDimension / VIEW
+            val outer = Path().apply {
+                addOval(androidx.compose.ui.geometry.Rect(4f * s, 3.6f * s, 18f * s, 17.6f * s))
+            }
+            val cut = Path().apply {
+                addOval(androidx.compose.ui.geometry.Rect(9.4f * s, 1.4f * s, 22.6f * s, 14.6f * s))
+            }
+            val moon = Path().apply {
+                op(outer, cut, androidx.compose.ui.graphics.PathOperation.Difference)
+            }
+            drawPath(moon, c)
+        }
+    }
+
     @Composable
     fun History(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
         val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint

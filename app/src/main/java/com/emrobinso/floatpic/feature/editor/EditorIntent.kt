@@ -17,7 +17,7 @@ data class DraftSnapshot(
     val sourceUri: String?,
     val state: EditorState = EditorState(),
     val scale: Float = 1f,
-    val theme: AppTheme = AppTheme.PASTEL_MAROON,
+    val theme: AppTheme = AppTheme.MAROON_DARK,
     val savedAt: Long = System.currentTimeMillis(),
 ) {
     companion object {

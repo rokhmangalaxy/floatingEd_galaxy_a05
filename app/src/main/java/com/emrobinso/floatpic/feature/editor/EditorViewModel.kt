@@ -25,7 +25,7 @@ data class UiState(
     val loading: Boolean = true,
     val error: String? = null,
     val state: EditorState = EditorState(),
-    val theme: AppTheme = AppTheme.PASTEL_MAROON,
+    val theme: AppTheme = AppTheme.MAROON_DARK,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val savedTick: Int = 0,

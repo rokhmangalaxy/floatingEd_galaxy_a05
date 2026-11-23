@@ -36,6 +36,10 @@
     <string name="rotate_left">Rotate left</string>
     <string name="rotate_right">Rotate right</string>
     <string name="pick_image">Pick image</string>
+    <string name="tool_ratio">Ratio</string>
+    <string name="history_short">History</string>
+    <string name="panel_ratio_title">Ratio &amp; frame</string>
+    <string name="history_empty">No history yet. Save or share an image to create one.</string>
     <string name="history_title">Recent edits (%1$d/10)</string>
     <string name="history_open">Re-open</string>
     <string name="history_delete">Remove from history</string>

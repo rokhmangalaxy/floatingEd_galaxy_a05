@@ -36,6 +36,10 @@
     <string name="rotate_left">Putar kiri</string>
     <string name="rotate_right">Putar kanan</string>
     <string name="pick_image">Pilih gambar</string>
+    <string name="tool_ratio">Rasio</string>
+    <string name="history_short">Riwayat</string>
+    <string name="panel_ratio_title">Rasio &amp; bingkai</string>
+    <string name="history_empty">Belum ada riwayat. Simpan atau share gambar untuk membuat riwayat.</string>
     <string name="history_title">Riwayat edit (%1$d/10)</string>
     <string name="history_open">Buka lagi</string>
     <string name="history_delete">Hapus dari riwayat</string>

@@ -38,8 +38,8 @@ object DraftStore {
     }
 
     fun theme(context: Context): AppTheme {
-        val raw = prefs(context).getString(KEY_THEME, null) ?: return AppTheme.PASTEL_MAROON
-        return runCatching { AppTheme.valueOf(raw) }.getOrDefault(AppTheme.PASTEL_MAROON)
+        val raw = prefs(context).getString(KEY_THEME, null) ?: return AppTheme.MAROON_DARK
+        return runCatching { AppTheme.valueOf(raw) }.getOrDefault(AppTheme.MAROON_DARK)
     }
 
     fun setTheme(context: Context, theme: AppTheme) =

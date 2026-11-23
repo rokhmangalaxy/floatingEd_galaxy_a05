@@ -14,8 +14,10 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -23,7 +25,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -60,6 +64,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.min
 import androidx.compose.ui.graphics.asImageBitmap
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.core.model.AspectPreset
@@ -78,7 +83,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT, MIRROR }
+enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT, MIRROR, RATIO, HISTORY }
 
 /** Label shown on the ratio chip. */
 fun AspectPreset.chipLabel(): String = when (this) {
@@ -181,6 +186,7 @@ fun EditorScreen(
         ) {
             TopBar(
                 title = state.aspect.chipLabel(),
+                dark = theme == AppTheme.MAROON_DARK,
                 canUndo = canUndo,
                 canRedo = canRedo,
                 onClose = onClose,
@@ -188,10 +194,11 @@ fun EditorScreen(
                 onRedo = onRedo,
                 onThemeToggle = onThemeToggle,
                 onMinimize = onMinimize,
-                onHistory = onHistory,
             )
 
-            // square preview container (user request); the actual aspect window is centred inside
+            // ---- STABLE ZONE -------------------------------------------------------
+            // Everything here keeps its position. Only the overlay panel below moves,
+            // because it is drawn *over* the preview instead of pushing it.
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -199,84 +206,88 @@ fun EditorScreen(
                     .padding(horizontal = 10.dp, vertical = 4.dp),
                 contentAlignment = Alignment.Center,
             ) {
+                BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    val side = min(maxWidth.value, maxHeight.value).dp
+                    Box(
+                        Modifier
+                            .size(side)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(.40f),
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(.18f),
+                                    ),
+                                ),
+                            )
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        when {
+                            loading -> LoadingState()
+                            error != null -> ErrorState(error)
+                            bitmap == null -> EmptyState(onPickImage)
+                            else -> EditorViewport(
+                                state = state,
+                                bitmap = bitmap,
+                                haptics = haptics,
+                                showGuides = guides || tool == Tool.CROP || tool == Tool.FRAME,
+                                onPreview = onPreview,
+                                onCommit = onCommit,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                }
+
+                // the only flexible element: a panel floating over the preview
                 Box(
                     Modifier
-                        .fillMaxHeight()
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(.35f),
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(.15f),
-                                ),
-                            ),
-                        )
-                        .padding(8.dp),
-                    contentAlignment = Alignment.Center,
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 6.dp),
                 ) {
-                    when {
-                        loading -> LoadingState()
-                        error != null -> ErrorState(error)
-                        bitmap == null -> EmptyState(onPickImage)
-                        else -> EditorViewport(
+                    AnimatedVisibility(
+                        visible = tool != Tool.NONE,
+                        enter = fadeIn() + slideInVertically { it / 3 },
+                        exit = fadeOut() + slideOutVertically { it / 3 },
+                    ) {
+                        OverlayPanel(
+                            tool = tool,
                             state = state,
-                            bitmap = bitmap,
                             haptics = haptics,
-                            showGuides = guides || tool == Tool.CROP || tool == Tool.FRAME,
-                            onPreview = onPreview,
-                            onCommit = onCommit,
-                            modifier = Modifier.fillMaxSize(),
+                            history = history,
+                            guidesOn = guides,
+                            onGuides = { guides = !guides },
+                            onAspect = onAspect,
+                            onReset = onReset,
+                            onAlign = onAlign,
+                            onPadding = onPadding,
+                            onCorner = onCorner,
+                            onShadow = onShadow,
+                            onBackground = onBackground,
+                            onAmbient = onAmbient,
+                            onScaleMode = onScaleMode,
+                            onRotate = onRotate,
+                            onFlipH = onFlipH,
+                            onFlipV = onFlipV,
+                            onText = onText,
+                            onTextPosition = onTextPosition,
+                            onTextStyle = onTextStyle,
+                            onTextSize = onTextSize,
+                            onDone = { tool = Tool.NONE },
+                            onOpenHistory = onOpenHistory,
+                            onDeleteHistory = onDeleteHistory,
                         )
                     }
                 }
             }
 
-            RatioChips(selected = state.aspect) { haptics.tick(); onAspect(it) }
-
-            ToolRow(active = tool) { haptics.tick(); tool = if (tool == it) Tool.NONE else it }
-
-            AnimatedVisibility(
-                visible = tool != Tool.NONE,
-                enter = slideInVertically { it / 3 } + fadeIn(),
-                exit = slideOutVertically { it / 3 } + fadeOut(),
-            ) {
-                ToolPanel(
-                    tool = tool,
-                    state = state,
-                    haptics = haptics,
-                    onReset = onReset,
-                    onAlign = onAlign,
-                    onPadding = onPadding,
-                    onCorner = onCorner,
-                    onShadow = onShadow,
-                    onBackground = onBackground,
-                    onAmbient = onAmbient,
-                    onScaleMode = onScaleMode,
-                    onRotate = onRotate,
-                    onFlipH = onFlipH,
-                    onFlipV = onFlipV,
-                    onText = onText,
-                    onTextPosition = onTextPosition,
-                    onTextStyle = onTextStyle,
-                    onTextSize = onTextSize,
-                    onGuides = { guides = !guides },
-                    guidesOn = guides,
-                    onDone = { tool = Tool.NONE },
-                )
-            }
-
-            AnimatedVisibility(
-                visible = history.isNotEmpty() && tool == Tool.NONE,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                HistoryStrip(
-                    history = history,
-                    onOpen = onOpenHistory,
-                    onDelete = onDeleteHistory,
-                )
-            }
+            // ---- icon row (always visible, never shifts) ---------------------------
+            ToolRow(
+                active = tool,
+                onTool = { haptics.tick(); tool = if (tool == it) Tool.NONE else it },
+            )
 
             ActionBar(onSave = onSave, onShare = onShare)
             Spacer(
@@ -293,12 +304,12 @@ private fun TopBar(
     title: String,
     canUndo: Boolean,
     canRedo: Boolean,
+    dark: Boolean,
     onClose: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onThemeToggle: () -> Unit,
     onMinimize: () -> Unit,
-    onHistory: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     Row(
@@ -328,8 +339,10 @@ private fun TopBar(
         RoundIconButton(enabled = canRedo, onClick = onRedo) {
             FloatIcons.Redo(tint = if (canRedo) scheme.onSurface else scheme.onSurface.copy(.28f))
         }
-        RoundIconButton(onClick = onHistory) { FloatIcons.History(tint = scheme.onSurface) }
-        RoundIconButton(onClick = onThemeToggle) { FloatIcons.Palette(tint = scheme.onSurface) }
+        RoundIconButton(onClick = onThemeToggle) {
+            if (dark) FloatIcons.Sun(tint = scheme.onSurface)
+            else FloatIcons.Moon(tint = scheme.onSurface)
+        }
         RoundIconButton(onClick = onMinimize) { FloatIcons.Minimize(tint = scheme.onSurface) }
     }
 }
@@ -346,34 +359,39 @@ fun RoundIconButton(enabled: Boolean = true, onClick: () -> Unit, content: @Comp
 }
 
 @Composable
-private fun RatioChips(selected: AspectPreset, onSelect: (AspectPreset) -> Unit) {
+private fun RatioChips(
+    selected: AspectPreset,
+    onSelect: (AspectPreset) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val scheme = MaterialTheme.colorScheme
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        RatioOrder.forEach { preset ->
-            val active = preset == selected
-            Text(
-                text = preset.chipLabel(),
-                fontSize = 12.sp,
-                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                color = if (active) scheme.onPrimary else scheme.onSurfaceVariant,
-                maxLines = 1,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(if (active) scheme.primary else scheme.surfaceVariant.copy(.65f))
-                    .border(
-                        1.dp,
-                        if (active) Color.Transparent else scheme.outline.copy(.4f),
-                        RoundedCornerShape(50),
-                    )
-                    .clickable { onSelect(preset) }
-                    .padding(horizontal = 13.dp, vertical = 7.dp),
-            )
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            RatioOrder.forEach { preset ->
+                val active = preset == selected
+                Text(
+                    text = preset.chipLabel(),
+                    fontSize = 11.sp,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                    color = if (active) scheme.onPrimary else scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (active) scheme.primary else scheme.surfaceVariant.copy(.55f))
+                        .border(
+                            1.dp,
+                            if (active) Color.Transparent else scheme.outline.copy(.35f),
+                            RoundedCornerShape(50),
+                        )
+                        .clickable { onSelect(preset) }
+                        .padding(horizontal = 11.dp, vertical = 6.dp),
+                )
+            }
         }
     }
 }
@@ -382,27 +400,60 @@ private fun RatioChips(selected: AspectPreset, onSelect: (AspectPreset) -> Unit)
 private fun ToolRow(active: Tool, onTool: (Tool) -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
+    val ic = { t: Tool -> if (active == t) scheme.onPrimary else scheme.onSurface }
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp),
+            .padding(horizontal = 4.dp, vertical = 3.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        ToolButton(ctx.getString(R.string.tool_crop), active == Tool.CROP,
-            { FloatIcons.Crop(tint = if (active == Tool.CROP) scheme.onPrimary else scheme.onSurface) },
-        ) { onTool(Tool.CROP) }
-        ToolButton(ctx.getString(R.string.tool_frame), active == Tool.FRAME,
-            { FloatIcons.Position(tint = if (active == Tool.FRAME) scheme.onPrimary else scheme.onSurface) },
-        ) { onTool(Tool.FRAME) }
-        ToolButton(ctx.getString(R.string.tool_background), active == Tool.BACKGROUND,
-            { FloatIcons.Background(tint = if (active == Tool.BACKGROUND) scheme.onPrimary else scheme.onSurface) },
-        ) { onTool(Tool.BACKGROUND) }
-        ToolButton(ctx.getString(R.string.tool_text), active == Tool.TEXT,
-            { FloatIcons.TextIcon(tint = if (active == Tool.TEXT) scheme.onPrimary else scheme.onSurface) },
-        ) { onTool(Tool.TEXT) }
-        ToolButton(ctx.getString(R.string.tool_mirror), active == Tool.MIRROR,
-            { FloatIcons.MirrorH(tint = if (active == Tool.MIRROR) scheme.onPrimary else scheme.onSurface) },
-        ) { onTool(Tool.MIRROR) }
+        toolItem(ctx.getString(R.string.tool_ratio), active == Tool.RATIO,
+            { FloatIcons.Ratio(tint = ic(Tool.RATIO)) }) { onTool(Tool.RATIO) }
+        toolItem(ctx.getString(R.string.tool_crop), active == Tool.CROP,
+            { FloatIcons.Crop(tint = ic(Tool.CROP)) }) { onTool(Tool.CROP) }
+        toolItem(ctx.getString(R.string.tool_frame), active == Tool.FRAME,
+            { FloatIcons.Position(tint = ic(Tool.FRAME)) }) { onTool(Tool.FRAME) }
+        toolItem(ctx.getString(R.string.tool_background), active == Tool.BACKGROUND,
+            { FloatIcons.Background(tint = ic(Tool.BACKGROUND)) }) { onTool(Tool.BACKGROUND) }
+        toolItem(ctx.getString(R.string.tool_text), active == Tool.TEXT,
+            { FloatIcons.TextIcon(tint = ic(Tool.TEXT)) }) { onTool(Tool.TEXT) }
+        toolItem(ctx.getString(R.string.tool_mirror), active == Tool.MIRROR,
+            { FloatIcons.MirrorH(tint = ic(Tool.MIRROR)) }) { onTool(Tool.MIRROR) }
+        toolItem(ctx.getString(R.string.history_short), active == Tool.HISTORY,
+            { FloatIcons.History(tint = ic(Tool.HISTORY)) }) { onTool(Tool.HISTORY) }
+    }
+}
+
+/** icon-only slot: fixed 40dp square, so the row never reflows */
+@Composable
+private fun RowScope.toolItem(
+    label: String,
+    active: Boolean,
+    icon: @Composable () -> Unit,
+    onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (active) scheme.primary else Color.Transparent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        icon()
+        if (active) {
+            // keeps the icon row visually "selected" without adding labels
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 3.dp)
+                    .size(width = 12.dp, height = 2.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(scheme.onPrimary),
+            )
+        }
     }
 }
 
@@ -488,16 +539,19 @@ private fun HistoryStrip(
     history: List<com.emrobinso.floatpic.data.HistoryEntry>,
     onOpen: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     onDelete: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
+    bare: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
-    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
-        Text(
-            ctx.getString(R.string.history_title, history.size),
-            fontSize = 10.sp,
-            color = scheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 3.dp, start = 2.dp),
-        )
+    Column(Modifier.fillMaxWidth().padding(horizontal = if (bare) 0.dp else 10.dp)) {
+        if (!bare) {
+            Text(
+                ctx.getString(R.string.history_title, history.size),
+                fontSize = 10.sp,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 3.dp, start = 2.dp),
+            )
+        }
         Row(
             Modifier
                 .fillMaxWidth()
@@ -602,10 +656,16 @@ private fun EmptyState(onPick: () -> Unit) {
 // ---------------------------------------------------------------------------------------
 
 @Composable
-private fun ToolPanel(
+private fun OverlayPanel(
     tool: Tool,
     state: EditorState,
     haptics: Haptics,
+    history: List<com.emrobinso.floatpic.data.HistoryEntry>,
+    guidesOn: Boolean,
+    onGuides: () -> Unit,
+    onAspect: (AspectPreset) -> Unit,
+    onOpenHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
+    onDeleteHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     onReset: () -> Unit,
     onAlign: (Float, Float) -> Unit,
     onPadding: (Float) -> Unit,
@@ -627,12 +687,16 @@ private fun ToolPanel(
 ) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = scheme.surface.copy(alpha = 0.97f),
+        shadowElevation = 10.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .background(scheme.surfaceVariant.copy(.4f))
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         when (tool) {
             Tool.CROP -> {
@@ -769,7 +833,7 @@ private fun ToolPanel(
 
             Tool.NONE -> Unit
         }
-
+    }
     }
 }
 

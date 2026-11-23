@@ -18,7 +18,19 @@ import androidx.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class AppTheme { NEUMORPHISM, PASTEL_MAROON }
+enum class AppTheme {
+    /** Pastel Maroon, light. */
+    PASTEL_MAROON,
+
+    /** Pastel Maroon, dark mode. */
+    MAROON_DARK,
+
+    /** Legacy soft-UI palette (kept for old drafts/history entries). */
+    NEUMORPHISM;
+
+    /** The toggle in the editor switches between exactly these two. */
+    fun toggled(): AppTheme = if (this == MAROON_DARK) PASTEL_MAROON else MAROON_DARK
+}
 
 /** Extra tokens both themes expose to components (neumorphic shadows, etc.). */
 data class ExtraTokens(
@@ -117,12 +129,13 @@ private val FloatTypography = Typography().let { base ->
 
 @Composable
 fun FloatPicTheme(theme: AppTheme, dark: Boolean, content: @Composable () -> Unit) {
+    val useDark = dark || theme == AppTheme.MAROON_DARK
     val scheme = when (theme) {
-        AppTheme.PASTEL_MAROON -> if (dark) MaroonDark else MaroonLight
-        AppTheme.NEUMORPHISM -> if (dark) NeuDark else NeuLight
+        AppTheme.PASTEL_MAROON, AppTheme.MAROON_DARK -> if (useDark) MaroonDark else MaroonLight
+        AppTheme.NEUMORPHISM -> if (useDark) NeuDark else NeuLight
     }
     val extra = when (theme) {
-        AppTheme.PASTEL_MAROON -> ExtraTokens(
+        AppTheme.PASTEL_MAROON, AppTheme.MAROON_DARK -> ExtraTokens(
             softShadow = Color(0x1F7A0C2E),
             softLight = Color(0x66FFFFFF),
             cardRadius = 28,
