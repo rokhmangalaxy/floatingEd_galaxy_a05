@@ -54,6 +54,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -233,18 +235,20 @@ fun EditorScreen(
                                 showGuides = guides || tool == Tool.CROP || tool == Tool.FRAME,
                                 onPreview = onPreview,
                                 onCommit = onCommit,
+                                onTapOutside = { if (tool != Tool.NONE) tool = Tool.NONE },
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
                     }
                 }
 
-                // the only flexible element: a panel floating over the preview
+                // the only flexible element: a panel floating over the preview.
+                // It is drawn last => on top of the preview, without moving it.
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 6.dp),
+                        .padding(bottom = 4.dp),
                 ) {
                     // plain `if` on purpose: AnimatedVisibility would resolve to the
                     // ColumnScope overload here and fight the BoxScope receiver.
@@ -436,6 +440,7 @@ private fun RowScope.toolItem(
             .size(40.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(if (active) scheme.primary else Color.Transparent)
+            .semantics { contentDescription = label }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

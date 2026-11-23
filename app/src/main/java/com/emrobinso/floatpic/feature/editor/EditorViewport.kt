@@ -54,6 +54,7 @@ fun EditorViewport(
     showGuides: Boolean,
     onPreview: (Transform) -> Unit,
     onCommit: (Transform) -> Unit,
+    onTapOutside: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (bitmap == null) {
@@ -161,6 +162,7 @@ fun EditorViewport(
                 }
                 .pointerInput(Unit) {
                     detectTapGestures(
+                        onTap = { onTapOutside() },
                         onDoubleTap = {
                             val t = stateRef.transform
                             val next = if (t.scale > 1.6f) 1f else 2f
