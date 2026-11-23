@@ -636,24 +636,28 @@ private fun ToolPanel(
                         active = state.transform.flipH,
                         icon = { FloatIcons.MirrorH(tint = scheme.primary, modifier = Modifier.size(22.dp)) },
                         onClick = onFlipH,
+                        modifier = Modifier.weight(1f),
                     )
                     MirrorTile(
                         label = ctx.getString(R.string.tool_mirror_v),
                         active = state.transform.flipV,
                         icon = { FloatIcons.MirrorV(tint = scheme.primary, modifier = Modifier.size(22.dp)) },
                         onClick = onFlipV,
+                        modifier = Modifier.weight(1f),
                     )
                     MirrorTile(
                         label = ctx.getString(R.string.rotate_left),
                         active = false,
                         icon = { FloatIcons.Rotate(tint = scheme.primary, modifier = Modifier.size(22.dp)) },
                         onClick = { onRotate(-90f) },
+                        modifier = Modifier.weight(1f),
                     )
                     MirrorTile(
                         label = ctx.getString(R.string.rotate_right),
                         active = false,
                         icon = { FloatIcons.Rotate(tint = scheme.primary, modifier = Modifier.size(22.dp)) },
                         onClick = { onRotate(90f) },
+                        modifier = Modifier.weight(1f),
                     )
                 }
                 Spacer(Modifier.height(6.dp))
@@ -672,12 +676,12 @@ private fun MirrorTile(
     active: Boolean,
     icon: @Composable () -> Unit,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .weight(1f)
+        modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(if (active) scheme.primaryContainer else scheme.surface.copy(.85f))
             .border(
