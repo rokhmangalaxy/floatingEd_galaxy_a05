@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FloatPic</string>
+    <string name="share_label">FloatPic — Edit</string>
+    <string name="editor_title">FloatPic</string>
+
+    <string name="action_close">Tutup</string>
+    <string name="action_save">Simpan</string>
+    <string name="action_share">Share</string>
+    <string name="action_minimize">Minimize</string>
+    <string name="action_undo">Urungkan</string>
+    <string name="action_redo">Ulangi</string>
+    <string name="action_reset">Reset</string>
+    <string name="action_theme">Tema</string>
+
+    <string name="tool_crop">Potong</string>
+    <string name="tool_frame">Bingkai</string>
+    <string name="tool_background">Latar</string>
+    <string name="tool_text">Teks</string>
+    <string name="tool_rotate">Putar</string>
+    <string name="tool_mirror">Cermin</string>
+    <string name="tool_mirror_h">Cermin kiri-kanan</string>
+    <string name="tool_mirror_v">Cermin atas-bawah</string>
+
+    <string name="ratio_original">Asli</string>
+    <string name="ratio_fit">Fit</string>
+
+    <string name="panel_crop_title">Potong gambar</string>
+    <string name="panel_crop_hint">Geser gambar, cubit untuk zoom, dua jari untuk putar. Semua bisa di-undo.</string>
+    <string name="panel_frame_title">Bingkai &amp; posisi</string>
+    <string name="panel_frame_hint">Geser gambar di dalam bingkai. Ketuk 9 titik untuk menempelkan posisi.</string>
+    <string name="panel_background_title">Latar</string>
+    <string name="panel_text_title">Teks</string>
+    <string name="panel_rotate_title">Putar &amp; cermin</string>
+
+    <string name="label_fill">Penuh</string>
+    <string name="label_fit">Utuh</string>
+    <string name="label_auto">Auto</string>
+    <string name="label_solid">Warna</string>
+    <string name="label_gradient">Gradasi</string>
+    <string name="label_blur">Blur</string>
+    <string name="label_none">Polos</string>
+    <string name="label_padding">Tepi</string>
+    <string name="label_corner">Sudut</string>
+    <string name="label_size">Ukuran</string>
+
+    <string name="text_hint">Ketik teks…</string>
+    <string name="text_position_top">Atas</string>
+    <string name="text_position_bottom">Bawah</string>
+    <string name="text_style_white">Putih</string>
+    <string name="text_style_black">Hitam</string>
+    <string name="text_clear">Hapus teks</string>
+
+    <string name="saved_toast">Tersimpan di Galeri</string>
+    <string name="save_failed">Gagal menyimpan gambar</string>
+    <string name="open_failed">Gambar tidak bisa dibuka (format tidak didukung?)</string>
+    <string name="no_image">Tidak ada gambar. Bagikan gambar ke FloatPic.</string>
+    <string name="share_failed">Tidak ada aplikasi untuk menerima gambar</string>
+
+    <string name="bubble_channel_name">Sesi mengambang</string>
+    <string name="bubble_channel_desc">Bubble untuk melanjutkan sesi edit</string>
+    <string name="bubble_notif_title">FloatPic mengambang</string>
+    <string name="bubble_notif_text">Ketuk untuk lanjut mengedit</string>
+    <string name="bubble_notif_close">Tutup</string>
+    <string name="bubble_permission_title">IzinkanFloat di atas aplikasi lain?</string>
+    <string name="bubble_permission_body">Agar sesi edit bisa disimpan sebagai bubble kecil, FloatPic perlu izin tampil di atas aplikasi lain.</string>
+    <string name="bubble_permission_grant">Beri izin</string>
+    <string name="bubble_permission_later">Nanti</string>
+    <string name="bubble_permission_denied">Izin belum diberikan — minimize dinonaktifkan.</string>
+    <string name="bubble_hold_hint">Lepas untuk batal · Tahan untuk tutup</string>
+
+    <string name="theme_neu">Neumorfisme</string>
+    <string name="theme_maroon">Pastel Maroon</string>
+    <string name="theme_dialog_title">Tema tampilan</string>
+</resources>
