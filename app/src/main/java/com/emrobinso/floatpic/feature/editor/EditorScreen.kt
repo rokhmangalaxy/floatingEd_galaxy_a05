@@ -246,11 +246,9 @@ fun EditorScreen(
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 6.dp),
                 ) {
-                    AnimatedVisibility(
-                        visible = tool != Tool.NONE,
-                        enter = fadeIn() + slideInVertically { it / 3 },
-                        exit = fadeOut() + slideOutVertically { it / 3 },
-                    ) {
+                    // plain `if` on purpose: AnimatedVisibility would resolve to the
+                    // ColumnScope overload here and fight the BoxScope receiver.
+                    if (tool != Tool.NONE) {
                         OverlayPanel(
                             tool = tool,
                             state = state,
@@ -831,7 +829,10 @@ private fun OverlayPanel(
             Tool.RATIO -> {
                 SectionTitle(ctx.getString(R.string.panel_ratio_title))
                 Spacer(Modifier.height(6.dp))
-                RatioChips(selected = state.aspect) { haptics.tick(); onAspect(it) }
+                RatioChips(
+                    selected = state.aspect,
+                    onSelect = { haptics.tick(); onAspect(it) },
+                )
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     PillToggle(ctx.getString(R.string.label_fill), state.scaleMode == ScaleMode.FILL) {
