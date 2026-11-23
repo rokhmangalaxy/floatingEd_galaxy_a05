@@ -287,6 +287,7 @@ class BubbleService : Service() {
         const val ACTION_CLOSE = "com.emrobinso.floatpic.bubble.CLOSE"
         const val ACTION_FINISH_APP = "com.emrobinso.floatpic.FINISH_APP"
         const val ACTION_UPDATE_NOTIF = "com.emrobinso.floatpic.bubble.UPDATE_NOTIF"
+        const val ACTION_RESTORE = "com.emrobinso.floatpic.bubble.RESTORE"
         const val EXTRA_SESSION = "bubble.session"
         const val EXTRA_THUMB_URI = "bubble.thumb"
         private const val CHANNEL_ID = "floatpic_bubble"

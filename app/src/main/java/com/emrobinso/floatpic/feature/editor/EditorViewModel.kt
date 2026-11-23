@@ -3,7 +3,6 @@ package com.emrobinso.floatpic.feature.editor
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emrobinso.floatpic.core.image.ImageLoader
 import com.emrobinso.floatpic.core.image.LoadedImage
 import com.emrobinso.floatpic.core.model.AspectPreset
 import com.emrobinso.floatpic.core.model.BackgroundKind
@@ -14,25 +13,22 @@ import com.emrobinso.floatpic.core.model.TextPosition
 import com.emrobinso.floatpic.core.model.TextStylePreset
 import com.emrobinso.floatpic.core.model.Transform
 import com.emrobinso.floatpic.core.render.EditorRenderer
+import com.emrobinso.floatpic.core.render.TextPainter
 import com.emrobinso.floatpic.ui.theme.AppTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.math.abs
-import kotlin.math.roundToInt
 
 data class UiState(
     val loading: Boolean = true,
     val error: String? = null,
     val state: EditorState = EditorState(),
     val theme: AppTheme = AppTheme.PASTEL_MAROON,
-    val pendingSessionId: String? = null,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
-    val saveResult: String? = null,
-    val imageReady: Boolean = false,
+    val savedTick: Int = 0,
 )
 
 class EditorViewModel : ViewModel() {
@@ -47,7 +43,6 @@ class EditorViewModel : ViewModel() {
 
     private val undo = ArrayDeque<EditorState>()
     private val redo = ArrayDeque<EditorState>()
-    private val maxHistory = 40
     private var committed: EditorState = EditorState()
 
     fun loadImage(loader: suspend () -> LoadedImage) {
@@ -55,18 +50,16 @@ class EditorViewModel : ViewModel() {
             _ui.update { it.copy(loading = true, error = null) }
             runCatching { loader() }
                 .onSuccess { loaded ->
+                    source?.recycle()
                     source = loaded.bitmap
                     orientation = loaded.orientation
-                    val fresh = EditorState().copy(
-                        background = EditorState().background,
-                    )
-                    committed = fresh
-                    undo.clear(); redo.clear()
+                    committed = EditorState()
+                    undo.clear()
+                    redo.clear()
                     _ui.update {
                         it.copy(
                             loading = false,
-                            imageReady = true,
-                            state = fresh,
+                            state = committed,
                             canUndo = false,
                             canRedo = false,
                         )
@@ -80,60 +73,46 @@ class EditorViewModel : ViewModel() {
 
     fun restore(snapshot: DraftSnapshot) {
         committed = snapshot.state
-        undo.clear(); redo.clear()
+        undo.clear()
+        redo.clear()
         _ui.update {
             it.copy(
                 state = snapshot.state,
                 theme = snapshot.theme,
                 loading = false,
-                imageReady = source != null,
                 canUndo = false,
                 canRedo = false,
             )
         }
     }
 
-    fun theme(): AppTheme = _ui.value.theme
-
     fun setTheme(theme: AppTheme) = _ui.update { it.copy(theme = theme) }
 
     fun currentState(): EditorState = _ui.value.state
 
-    fun sourceSize(): Pair<Int, Int>? = source?.let { it.width to it.height }
+    fun currentTheme(): AppTheme = _ui.value.theme
 
-    fun outputSize(): Pair<Int, Int> {
-        val bmp = source ?: return 1080 to 1080
-        val size = EditorRenderer.outputSize(committed, bmp.width, bmp.height, orientation)
-        return size.w to size.h
-    }
-
-    // ---- mutation helpers -------------------------------------------------
-
-    /** Live transform changes during a gesture: no history entry per frame. */
+    /** Live transform during a gesture — never touches history. */
     fun previewTransform(t: Transform) {
         _ui.update { it.copy(state = it.state.copy(transform = t)) }
     }
 
-    /** Called when a gesture ends — pushes a single undo entry. */
+    /** Gesture ended: one history entry, independent of frame count. */
     fun commitTransform(t: Transform) {
         pushHistory()
-        _ui.update {
-            it.copy(state = it.state.copy(transform = t), canUndo = true, canRedo = false)
-        }
+        _ui.update { it.copy(state = it.state.copy(transform = t), canUndo = true, canRedo = false) }
         committed = _ui.value.state
     }
 
     private fun pushHistory() {
         undo.addLast(committed)
-        while (undo.size > maxHistory) undo.removeFirst()
+        while (undo.size > 40) undo.removeFirst()
         redo.clear()
     }
 
-    fun mutate(block: (EditorState) -> EditorState) {
+    private fun mutate(block: (EditorState) -> EditorState) {
         pushHistory()
-        _ui.update {
-            it.copy(state = block(it.state), canUndo = true, canRedo = false)
-        }
+        _ui.update { it.copy(state = block(it.state), canUndo = true, canRedo = false) }
         committed = _ui.value.state
     }
 
@@ -149,10 +128,6 @@ class EditorViewModel : ViewModel() {
         undo.addLast(committed)
         committed = next
         _ui.update { it.copy(state = next, canUndo = true, canRedo = redo.isNotEmpty()) }
-    }
-
-    fun reset() {
-        mutate { it.copy(transform = Transform()) }
     }
 
     fun setAspect(preset: AspectPreset) = mutate { it.copy(aspect = preset) }
@@ -181,7 +156,7 @@ class EditorViewModel : ViewModel() {
 
     fun useAmbientBackground() {
         val bmp = source ?: return
-        val (c1, c2, _) = EditorRenderer.ambientColors(bmp)
+        val (c1, _, c2) = EditorRenderer.ambientColors(bmp)
         mutate {
             it.copy(
                 background = BackgroundSpec(
@@ -197,58 +172,45 @@ class EditorViewModel : ViewModel() {
 
     fun setTextPosition(pos: TextPosition) = mutate { it.copy(text = it.text.copy(position = pos)) }
 
-    fun setTextStyle(style: TextStylePreset) = mutate { it.copy(text = it.text.copy(style = style)) }
+    fun setTextStyle(style: TextStylePreset) = mutate {
+        it.copy(text = it.text.copy(style = style))
+    }
 
     fun setTextSize(frac: Float) = mutate { it.copy(text = it.text.copy(sizeFraction = frac)) }
 
-    fun clearText() = mutate { it.copy(text = it.text.copy(text = "")) }
-
     /**
-     * Tap-to-align: keeps the current zoom but re-centres the image on the frame per the
-     * 3x3 anchor. Offset is expressed in output px so the preview matches the export.
+     * Relative positioning: keep the zoom, snap the image to one of the 9 anchors inside
+     * its frame (docs/06). Offsets live in output px so preview == export.
      */
-    fun alignTo(anchorFx: Float, anchorFy: Float, outW: Float, outH: Float, srcW: Int, srcH: Int) {
+    fun alignTo(anchorFx: Float, anchorFy: Float) {
+        val bmp = source ?: return
         val state = _ui.value.state
+        val out = EditorRenderer.outputSize(state, bmp.width, bmp.height, orientation)
+        val outW = out.w.toFloat()
+        val outH = out.h.toFloat()
         val pad = state.paddingDp * (outW / 1080f)
         val availW = (outW - pad * 2).coerceAtLeast(1f)
         val availH = (outH - pad * 2).coerceAtLeast(1f)
-        val base = EditorRenderer.baseScale(state, outW, outH, srcW, srcH) * state.transform.scale
-        val imgW = srcW * base
-        val imgH = srcH * base
+        val base = EditorRenderer.baseScale(state, outW, outH, bmp.width, bmp.height)
+        val s = base * state.transform.scale
+        val imgW = bmp.width * s
+        val imgH = bmp.height * s
         val overflowX = ((imgW - availW) / 2f).coerceAtLeast(0f)
         val overflowY = ((imgH - availH) / 2f).coerceAtLeast(0f)
         val tx = overflowX * (2f * anchorFx - 1f) / (outW / 1080f)
-        val ty = overflowY * (2f * anchorFy - 1f) / (outH / 1080f)
+        val ty = overflowY * (2f * anchorFy - 1f) / (outW / 1080f)
         mutate { it.copy(transform = it.transform.copy(offsetX = tx, offsetY = ty)) }
     }
 
     fun bubbleThumb(): Bitmap? = source?.let { EditorRenderer.bubbleThumb(it) }
 
-    fun reportSaved() = _ui.update { it.copy(saveResult = "saved") }
+    fun reportSaved() = _ui.update { it.copy(savedTick = it.savedTick + 1) }
 
-    fun clearSaveResult() = _ui.update { it.copy(saveResult = null) }
-
-    fun snapRotation(rotation: Float): Float {
-        val snapped = com.emrobinso.floatpic.core.render.TextPainter.snapRotation(rotation)
-        return if (abs(snapped - rotation) > 0.001f) snapped else rotation
-    }
-
-    /** Push one history entry for a text edit that is already reflected in the UI state. */
-    fun commitTextEdit() {
-        if (committed.text != _ui.value.state.text) {
-            pushHistory()
-            committed = _ui.value.state
-            _ui.update { it.copy(canUndo = undo.isNotEmpty(), canRedo = false) }
-        }
-    }
+    fun snapRotation(rotation: Float): Float = TextPainter.snapRotation(rotation)
 
     override fun onCleared() {
         super.onCleared()
         source?.recycle()
         source = null
-    }
-
-    companion object {
-        fun round(value: Float): Int = value.roundToInt()
     }
 }

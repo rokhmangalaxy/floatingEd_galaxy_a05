@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
@@ -38,11 +39,11 @@ import com.emrobinso.floatpic.ui.Haptics
 import kotlin.math.abs
 import kotlin.math.max
 
-/** Preview width used as the reference "output" coordinate space (see docs/04). */
+/** Reference output width; all transforms are stored in this coordinate space. */
 private const val REF_W = 1080f
 
 /**
- * The visible aspect window. Background + image are rendered by [EditorRenderer], the same
+ * The visible aspect window. Background + image go through [EditorRenderer] — the same
  * renderer export uses, so preview == result.
  */
 @Composable
@@ -61,13 +62,20 @@ fun EditorViewport(
     }
 
     val aspect = EditorRenderer.aspectRatio(state, bitmap.width, bitmap.height, 0)
-    val outH = if (aspect <= 0f) REF_W else REF_W / aspect
-
-    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
+    var viewportWidth by remember { mutableStateOf(1f) }
     val stateRef by rememberUpdatedState(state)
     val hapticsRef by rememberUpdatedState(haptics)
+    val previewRef by rememberUpdatedState(onPreview)
+    val commitRef by rememberUpdatedState(onCommit)
+    val aspectRef by rememberUpdatedState(aspect)
+
+    fun outHeight(): Float {
+        val a = aspectRef
+        return if (a <= 0f) REF_W else REF_W / a
+    }
 
     fun clampOffset(t: Transform): Transform {
+        val outH = outHeight()
         val base = EditorRenderer.baseScale(stateRef, REF_W, outH, bitmap.width, bitmap.height)
         val s = base * t.scale
         val imgW = bitmap.width * s
@@ -84,7 +92,9 @@ fun EditorViewport(
     }
 
     Box(
-        modifier = modifier.fillMaxSize().onSizeChanged { viewportSize = it },
+        modifier = modifier
+            .fillMaxSize()
+            .onSizeChanged { if (it.width > 1) viewportWidth = it.width.toFloat() },
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -93,58 +103,59 @@ fun EditorViewport(
                 .aspectRatio(if (aspect <= 0f) 1f else aspect)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF0B0B0D))
-                .pointerInput(bitmap) {
+                .pointerInput(Unit) {
                     awaitEachGesture {
                         val start = stateRef.transform
                         var accScale = 1f
                         var accRot = 0f
                         var accPan = Offset.Zero
                         var moved = false
-                        var limitHit = false
-                        do {
-                            val event = awaitPointerEvent()
-                            if (event.changes.count { it.pressed } < 1) break
+                        var limitNotified = false
+
+                        while (true) {
+                            val event: PointerEvent = awaitPointerEvent()
+                            if (event.changes.isEmpty()) break
+                            if (event.changes.none { it.pressed }) break
+
                             val zoom = event.calculateZoom()
                             val rot = event.calculateRotation()
                             val pan = event.calculatePan()
-                            if (zoom != 1f || rot != 0f || abs(pan.x) + abs(pan.y) > 0.01f) {
+                            val isGesture = zoom != 1f || rot != 0f ||
+                                abs(pan.x) + abs(pan.y) > 0.01f
+                            if (isGesture) {
                                 moved = true
-                                accScale = (accScale * zoom).coerceIn(0.2f, 20f)
+                                accScale = (accScale * zoom).coerceIn(0.05f, 40f)
                                 accRot += rot
                                 accPan += pan
 
-                                val px = if (viewportSize.width > 1) viewportSize.width.toFloat() else 1f
-                                val factor = REF_W / px
-                                val rawScale = (start.scale * accScale).coerceIn(1f, 10f)
-                                val raw = start.copy(
-                                    scale = rawScale,
+                                val factor = REF_W / viewportWidth
+                                val desiredScale = start.scale * accScale
+                                val clampedScale = desiredScale.coerceIn(1f, 10f)
+                                val candidate = start.copy(
+                                    scale = clampedScale,
                                     rotation = start.rotation + accRot,
                                     offsetX = start.offsetX + accPan.x * factor,
                                     offsetY = start.offsetY + accPan.y * factor,
                                 )
-                                val clamped = clampOffset(raw)
-                                if (!limitHit &&
-                                    (abs(clamped.offsetX - raw.offsetX) > 1f ||
-                                        abs(clamped.offsetY - raw.offsetY) > 1f)
-                                ) {
-                                    limitHit = true
+                                val clamped = clampOffset(candidate)
+                                val hitLimit = abs(clamped.offsetX - candidate.offsetX) > 1f ||
+                                    abs(clamped.offsetY - candidate.offsetY) > 1f ||
+                                    clampedScale != desiredScale
+                                if (hitLimit && !limitNotified) {
+                                    limitNotified = true
                                     hapticsRef.tick()
+                                } else if (!hitLimit) {
+                                    limitNotified = false
                                 }
-                                if (rawScale != start.scale * accScale) {
-                                    if (!limitHit) { limitHit = true; hapticsRef.tick() }
-                                } else if (limitHit) {
-                                    limitHit = false
-                                }
-                                onPreview(clamped)
+                                previewRef(clamped)
                             }
-                        } while (event.changes.any { it.pressed })
+                        }
 
                         if (moved) {
                             val latest = stateRef.transform
                             val snapped = TextPainter.snapRotation(latest.rotation)
-                            val delta = snapped - latest.rotation
-                            if (abs(delta) > 0.01f) hapticsRef.snap()
-                            onCommit(clampOffset(latest.copy(rotation = snapped)))
+                            if (abs(snapped - latest.rotation) > 0.01f) hapticsRef.snap()
+                            commitRef(clampOffset(latest.copy(rotation = snapped)))
                         }
                     }
                 }
@@ -154,7 +165,7 @@ fun EditorViewport(
                             val t = stateRef.transform
                             val next = if (t.scale > 1.6f) 1f else 2f
                             hapticsRef.snap()
-                            onCommit(clampOffset(t.copy(scale = next)))
+                            commitRef(clampOffset(t.copy(scale = next)))
                         },
                     )
                 },

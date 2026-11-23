@@ -12,13 +12,13 @@ import java.io.IOException
 
 data class LoadedImage(
     val bitmap: Bitmap,
-    /** 0, 90, 180, 270 — rotation already applied to [bitmap]. */
+    /** EXIF rotation that was already applied to [bitmap] (0/90/180/270). */
     val orientation: Int,
 )
 
 object ImageLoader {
 
-    /** Decode downsampled + upright. Never keep the raw stream around. */
+    /** Decode downsampled + upright, so the editor never touches a 50 MP bitmap. */
     suspend fun load(context: Context, uri: Uri, targetMax: Int = 2048): LoadedImage =
         withContext(Dispatchers.IO) {
             val resolver = context.contentResolver
@@ -30,54 +30,42 @@ object ImageLoader {
             }
 
             var sample = 1
-            while (bounds.outWidth / sample > targetMax * 2 && bounds.outHeight / sample > targetMax * 2) {
+            while (bounds.outWidth / (sample * 2) >= targetMax && bounds.outHeight / (sample * 2) >= targetMax) {
                 sample *= 2
             }
             val opts = BitmapFactory.Options().apply {
                 inSampleSize = sample
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
-            var bitmap = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-                ?: throw IOException("decode failed $uri")
+            var bitmap = resolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, opts)
+            } ?: throw IOException("decode failed $uri")
 
-            val exifRotation = resolver.openInputStream(uri)?.use { stream ->
-                runCatching {
-                    when (ExifInterface(stream).getAttributeInt(
-                        ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL,
-                    )) {
-                        ExifInterface.ORIENTATION_ROTATE_90 -> 90
-                        ExifInterface.ORIENTATION_ROTATE_180 -> 180
-                        ExifInterface.ORIENTATION_ROTATE_270 -> 270
-                        else -> 0
-                    }
-                }.getOrDefault(0)
-            } ?: 0
+            val exif = resolver.openInputStream(uri)?.use { stream ->
+                runCatching { ExifInterface(stream).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL,
+                ) }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+            } ?: ExifInterface.ORIENTATION_NORMAL
 
-            val extra = runCatching {
-                resolver.openInputStream(uri)?.use { stream ->
-                    when (ExifInterface(stream).getAttributeInt(
-                        ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL,
-                    )) {
-                        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> intArrayOf(-1, 0)
-                        ExifInterface.ORIENTATION_FLIP_VERTICAL -> intArrayOf(0, -1)
-                        else -> null
-                    }
+            val rotation = when (exif) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                else -> 0
+            }
+            val flipX = exif == ExifInterface.ORIENTATION_FLIP_HORIZONTAL
+            val flipY = exif == ExifInterface.ORIENTATION_FLIP_VERTICAL
+
+            if (rotation != 0 || flipX || flipY) {
+                val matrix = Matrix().apply {
+                    postRotate(rotation.toFloat())
+                    postScale(if (flipX) -1f else 1f, if (flipY) -1f else 1f)
                 }
-            }.getOrNull()
-
-            if (exifRotation != 0 || extra != null) {
-                val m = Matrix().apply {
-                    postRotate(exifRotation.toFloat())
-                    when (extra) {
-                        intArrayOf(-1, 0) -> postScale(-1f, 1f)
-                        intArrayOf(0, -1) -> postScale(1f, -1f)
-                    }
-                }
-                val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
+                val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
                 if (rotated !== bitmap) bitmap.recycle()
                 bitmap = rotated
             }
 
-            LoadedImage(bitmap, exifRotation)
+            LoadedImage(bitmap, rotation)
         }
 }
