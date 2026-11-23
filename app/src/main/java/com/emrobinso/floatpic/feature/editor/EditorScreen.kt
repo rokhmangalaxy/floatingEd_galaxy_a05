@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,9 +24,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
@@ -33,7 +32,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,6 +59,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -208,7 +207,12 @@ fun EditorScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // CONTAINER: always a square (side = min(w,h)). It never follows the
+                    // image ratio — it is the stage the preview element sits on.
                     val side = min(maxWidth.value, maxHeight.value).dp
+                    // tap on the empty margin of the square closes the open panel;
+                    // a tap on the image itself is consumed by the preview below.
+                    val closePanel = { if (tool != Tool.NONE) tool = Tool.NONE }
                     Box(
                         Modifier
                             .size(side)
@@ -216,12 +220,17 @@ fun EditorScreen(
                             .background(
                                 Brush.verticalGradient(
                                     listOf(
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(.40f),
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(.18f),
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(.34f),
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(.14f),
                                     ),
                                 ),
                             )
-                            .padding(8.dp),
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outline.copy(.30f),
+                                RoundedCornerShape(16.dp),
+                            )
+                            .pointerInput(Unit) { detectTapGestures { closePanel() } },
                         contentAlignment = Alignment.Center,
                     ) {
                         when {
@@ -235,8 +244,11 @@ fun EditorScreen(
                                 showGuides = guides || tool == Tool.CROP || tool == Tool.FRAME,
                                 onPreview = onPreview,
                                 onCommit = onCommit,
-                                onTapOutside = { if (tool != Tool.NONE) tool = Tool.NONE },
-                                modifier = Modifier.fillMaxSize(),
+                                onTapOutside = closePanel,
+                                // inset so the ratio window never touches the square frame
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(10.dp),
                             )
                         }
                     }

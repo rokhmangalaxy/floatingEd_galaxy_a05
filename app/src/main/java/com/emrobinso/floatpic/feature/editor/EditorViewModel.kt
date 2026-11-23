@@ -56,7 +56,10 @@ class EditorViewModel : ViewModel() {
                 .onSuccess { loaded ->
                     source?.recycle()
                     source = loaded.bitmap
-                    orientation = loaded.orientation
+                    // The loader already bakes EXIF rotation into the bitmap, so the
+                    // source is upright: using the EXIF angle again would swap w/h and
+                    // make the preview ratio disagree with the exported file.
+                    orientation = 0
                     sourceFile = loaded.cacheFile
                     committed = EditorState()
                     undo.clear()
@@ -135,7 +138,13 @@ class EditorViewModel : ViewModel() {
         _ui.update { it.copy(state = next, canUndo = true, canRedo = redo.isNotEmpty()) }
     }
 
-    fun setAspect(preset: AspectPreset) = mutate { it.copy(aspect = preset) }
+    /**
+     * Changing the frame ratio re-fits the image (like Canva/IG): offsets stored in output
+     * px would otherwise point outside a narrower frame.
+     */
+    fun setAspect(preset: AspectPreset) = mutate {
+        if (it.aspect == preset) it else it.copy(aspect = preset, transform = Transform())
+    }
 
     /** Reset pan/zoom/rotation but keep background, padding and text (docs/04). */
     fun resetTransform() = mutate { it.copy(transform = Transform()) }

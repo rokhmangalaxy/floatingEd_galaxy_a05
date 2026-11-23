@@ -3,14 +3,16 @@ package com.emrobinso.floatpic.feature.editor
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -92,18 +94,28 @@ fun EditorViewport(
         )
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .onSizeChanged { if (it.width > 1) viewportWidth = it.width.toFloat() },
+    // The PARENT (a square container, owned by EditorScreen) only gives us a box; we size
+    // the *preview element* to the requested aspect ratio and centre it. That is how the
+    // window follows the image ratio (ORIGINAL) or the picked preset while the container
+    // stays square. `Modifier.fillMaxSize().aspectRatio()` cannot do this: with fixed
+    // constraints the ratio is silently ignored and you always get a 1:1 window.
+    BoxWithConstraints(
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
+        val a = if (aspect <= 0f) 1f else aspect
+        val window = when {
+            maxWidth <= 0.dp || maxHeight <= 0.dp -> 1.dp to 1.dp
+            maxWidth / maxHeight > a -> (maxHeight * a) to maxHeight
+            else -> maxWidth to (maxWidth / a)
+        }
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .aspectRatio(if (aspect <= 0f) 1f else aspect)
+                .size(window.first, window.second)
+                .onSizeChanged { if (it.width > 1) viewportWidth = it.width.toFloat() }
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF0B0B0D))
+                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val start = stateRef.transform
@@ -162,6 +174,8 @@ fun EditorViewport(
                 }
                 .pointerInput(Unit) {
                     detectTapGestures(
+                        // tap on the preview closes the open panel (margin taps are
+                        // handled by the square container in EditorScreen).
                         onTap = { onTapOutside() },
                         onDoubleTap = {
                             val t = stateRef.transform
