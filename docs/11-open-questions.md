@@ -14,6 +14,9 @@
 | 8 | Align → **Posisi** | Label & ikon diganti: panah menempelkan gambar relatif terhadap bingkai (dulu "align"/frame) |
 | 9 | Ikon app | **Wadah cat + kuas + awan kinton** (digambar via `tools/gen_art.py`) |
 | 10 | Build & distribusi | GitHub Actions → rolling release `apk-latest`; kunci tetap → update menimpa |
+| 11 | Kartu editor | Lebar **80%** × tinggi **70%** layar (bukan full-screen) |
+| 12 | Container preview | **Kotak 1:1** (bingkai), gambar mengikuti rasio di dalamnya |
+| 13 | Riwayat | **10 edit terakhir** bisa dibuka & diedit ulang (long-press = hapus) |
 
 Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bubble), dan 14 (tema).
 
@@ -60,6 +63,14 @@ Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bu
 - [x] Simpan galeri (incl. izin legacy API ≤28), share, minimize ke bubble, restore, hold-close
 - [x] Tema Neumorphism & Pastel Maroon + toggle persisten
 - [x] CI: build release bertanda tangan, verifikasi fingerprint kunci, rilis `apk-latest`
+
+## Perbaikan v0.1.1 (dari laporan perangkat)
+
+- [x] **Force close saat minta izin overlay** → semua `startActivity` izin dibungkus `runCatching` + fallback ke Settings global + toast (tidak pernah crash).
+- [x] **`cannot open content://…`** → stream share dibaca **sekali** lalu disalin ke cache; decode & EXIF hanya dari file lokal (chat app sering memberi URI sekali-pakai).
+- [x] Kartu editor **80% × 70%**, container preview **kotak 1:1**.
+- [x] **Riwayat 10 edit** (foto + state) yang bisa dibuka lagi tanpa kehilangan setting.
+- [x] Thumbnail riwayat didecode di background thread (tidak nge-freeze UI).
 
 ## Berikutnya (v0.2)
 
