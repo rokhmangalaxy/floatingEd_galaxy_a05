@@ -88,8 +88,12 @@ jobs:
         run: |
           set -e
           TITLE="CI build log"
-          DIAG=$(cat build.log /tmp/certs.txt 2>/dev/null | grep -nE "^(e|w): |error:|Could not resolve|FAILURE: Build failed|Signer #1 certificate SHA-256" | head -60 || true)
-          BODY=$( (echo "--- diagnostics ---"; echo "$DIAG"; echo "--- tail ---"; tail -c 6000 build.log) 2>/dev/null | sed 's/\r//g' || echo "no log")
+          DIAG=$(cat build.log /tmp/certs.txt 2>/dev/null | grep -nE "^(e|w): |error:|Could not resolve|FAILURE: Build failed|Signer #1 certificate SHA-256" | head -40 || true)
+          # configuration failures never print "e:" lines, so also keep the first part of
+          # the log (that is where "What went wrong" lives) and everything around it
+          HEAD=$(sed -n '1,80p' build.log 2>/dev/null | sed 's/\r//g' || true)
+          CAUSE=$(awk '/What went wrong/,/^\* Try/' build.log 2>/dev/null | head -30 || true)
+          BODY=$( (echo "--- diagnostics ---"; echo "$DIAG"; echo "--- head ---"; echo "$HEAD"; echo "--- cause ---"; echo "$CAUSE"; echo "--- tail ---"; tail -c 2500 build.log) 2>/dev/null | sed 's/\r//g' || echo "no log")
           NUM=$(gh issue list --search 'CI build log in:title' --state open --json number --jq '.[0].number // empty')
           if [ -z "$NUM" ]; then
             gh issue create --title "$TITLE" \
