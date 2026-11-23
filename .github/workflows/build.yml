@@ -120,6 +120,13 @@ jobs:
             echo "::error::signature changed - builds would require an uninstall"; exit 1
           fi
 
+      - name: APK facts
+        run: |
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -1)
+          "$AAPT2" dump badging app/build/outputs/apk/release/app-release.apk \
+            | grep -E "^(package|application-label|sdkVersion|targetSdkVersion|launchable-activity)" || true
+          unzip -l app/build/outputs/apk/release/app-release.apk | grep -E "ic_launcher|classes" | head -8
+
       - name: Name the artifact
         run: |
           mkdir -p dist

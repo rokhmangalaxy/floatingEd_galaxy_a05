@@ -132,6 +132,9 @@ class EditorViewModel : ViewModel() {
 
     fun setAspect(preset: AspectPreset) = mutate { it.copy(aspect = preset) }
 
+    /** Reset pan/zoom/rotation but keep background, padding and text (docs/04). */
+    fun resetTransform() = mutate { it.copy(transform = Transform()) }
+
     fun setScaleMode(mode: ScaleMode) = mutate { it.copy(scaleMode = mode) }
 
     fun rotateBy(deg: Float) = mutate {

@@ -2,6 +2,7 @@ package com.emrobinso.floatpic.feature.editor
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -51,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.emrobinso.floatpic.R
@@ -74,6 +76,13 @@ class EditorActivity : ComponentActivity() {
 
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private val legacyWritePermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) saveToGallery(lifecycleScope) else {
+                Toast.makeText(this, R.string.save_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
 
     private val overlayLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -169,7 +178,7 @@ class EditorActivity : ComponentActivity() {
                             onCommit = vm::commitTransform,
                             onSave = { saveToGallery(scope) },
                             onShare = { shareNow() },
-                            onReset = { vm.previewTransform(com.emrobinso.floatpic.core.model.Transform()) },
+                            onReset = vm::resetTransform,
                             onAlign = vm::alignTo,
                             onPadding = vm::setPadding,
                             onCorner = vm::setCorner,
@@ -312,6 +321,13 @@ class EditorActivity : ComponentActivity() {
     }
 
     private fun saveToGallery(scope: CoroutineScope) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            legacyWritePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            return
+        }
         scope.launch {
             val out = renderCurrent()
             if (out == null) {
