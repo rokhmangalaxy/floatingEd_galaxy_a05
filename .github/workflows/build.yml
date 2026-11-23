@@ -88,7 +88,7 @@ jobs:
         run: |
           set -e
           TITLE="CI build log"
-          DIAG=$(grep -nE "^(e|w): |error:|Could not resolve|FAILURE: Build failed" build.log 2>/dev/null | head -60 || true)
+          DIAG=$(cat build.log /tmp/certs.txt 2>/dev/null | grep -nE "^(e|w): |error:|Could not resolve|FAILURE: Build failed|Signer #1 certificate SHA-256" | head -60 || true)
           BODY=$( (echo "--- diagnostics ---"; echo "$DIAG"; echo "--- tail ---"; tail -c 6000 build.log) 2>/dev/null | sed 's/\r//g' || echo "no log")
           NUM=$(gh issue list --search 'CI build log in:title' --state open --json number --jq '.[0].number // empty')
           if [ -z "$NUM" ]; then
@@ -110,7 +110,9 @@ jobs:
           "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk \
             | tee /tmp/certs.txt
           EXPECTED="BD:E2:3A:AC:99:C0:1B:DD:73:E4:4D:35:3D:E8:E0:60:7F:FE:46:8A:15:A5:B4:7F:B7:78:48:50:50:94:01:0D"
-          if grep -qi "$EXPECTED" /tmp/certs.txt; then
+          NORM=$(tr -d ': \n' < /tmp/certs.txt | tr 'a-f' 'A-F')
+          EXP_NORM=$(echo "$EXPECTED" | tr -d ':')
+          if echo "$NORM" | grep -q "$EXP_NORM"; then
             echo "certificate OK -> in-place updates guaranteed"
           elif [ -n "${{ secrets.FLOATPIC_KEY_BASE64 }}" ]; then
             echo "using a custom key from secrets; skipping fingerprint match"
