@@ -93,8 +93,18 @@ object EditorRenderer {
             }
             BackgroundKind.BLUR -> {
                 canvas.drawColor(Color.BLACK)
-                if (allowBlur) {
-                    drawBlurBackdrop(canvas, bitmap, state, w, h)
+                val backdrop = if (allowBlur) BlurCache.get(bitmap) else null
+                if (backdrop != null) {
+                    drawCover(canvas, backdrop, w, h)
+                    // gentle vignette so the subject still pops
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        shader = RadialGradient(
+                            w / 2f, h / 2f, max(w, h) * 0.78f,
+                            intArrayOf(Color.argb(20, 0, 0, 0), Color.argb(150, 0, 0, 0)),
+                            null, Shader.TileMode.CLAMP,
+                        )
+                    }
+                    canvas.drawRect(0f, 0f, w, h, paint)
                 } else {
                     canvas.drawColor(state.background.color.toInt())
                 }
@@ -143,27 +153,83 @@ object EditorRenderer {
         }
     }
 
-    private fun drawBlurBackdrop(canvas: Canvas, bitmap: Bitmap, state: EditorState, w: Float, h: Float) {
-        val cover = max(w / bitmap.width, h / bitmap.height)
-        canvas.save()
-        canvas.clipRect(0f, 0f, w, h)
+    /** cover-fit draw of an already sized bitmap */
+    private fun drawCover(canvas: Canvas, bmp: Bitmap, w: Float, h: Float) {
+        val cover = max(w / bmp.width, h / bmp.height)
         canvas.drawBitmap(
-            bitmap, null,
-            RectF((w - bitmap.width * cover) / 2f, (h - bitmap.height * cover) / 2f,
-                (w + bitmap.width * cover) / 2f, (h + bitmap.height * cover) / 2f),
+            bmp, null,
+            RectF((w - bmp.width * cover) / 2f, (h - bmp.height * cover) / 2f,
+                (w + bmp.width * cover) / 2f, (h + bmp.height * cover) / 2f),
             Paint(Paint.FILTER_BITMAP_FLAG),
         )
-        canvas.restore()
-        // darken + vignette to mimic a pre-blurred backdrop cheaply and consistently
-        val r = max(w, h) * 0.75f
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(
-                w / 2f, h / 2f, r,
-                intArrayOf(Color.argb(90, 0, 0, 0), Color.argb(190, 0, 0, 0)),
-                null, Shader.TileMode.CLAMP,
-            )
+    }
+
+    /**
+     * Pre-blurred, downscaled backdrop. Rendering it once (not per frame) keeps preview
+     * and export pixel-identical and avoids RenderEffect (API 31 only) — see docs/05.
+     */
+    private object BlurCache {
+        private var key: Bitmap? = null
+        private var value: Bitmap? = null
+
+        fun get(source: Bitmap): Bitmap? = synchronized(this) {
+            if (key === source && value != null) return value
+            val small = Bitmap.createScaledBitmap(source, 96, 96, true)
+            val blurred = stackBlur(small, 18)
+            if (small !== source) small.recycle()
+            key = source
+            value = blurred
+            blurred
         }
-        canvas.drawRect(0f, 0f, w, h, paint)
+
+        /** Two-pass box blur (fast, dependency free). */
+        private fun stackBlur(src: Bitmap, radius: Int): Bitmap {
+            val w = src.width
+            val h = src.height
+            val pixels = IntArray(w * h)
+            src.getPixels(pixels, 0, w, 0, 0, w, h)
+            val tmp = IntArray(w * h)
+            boxPass(pixels, tmp, w, h, radius, horizontal = true)
+            boxPass(tmp, pixels, w, h, radius, horizontal = false)
+            val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            out.setPixels(pixels, 0, w, 0, 0, w, h)
+            return out
+        }
+
+        private fun boxPass(src: IntArray, dst: IntArray, w: Int, h: Int, r: Int, horizontal: Boolean) {
+            val len = if (horizontal) w else h
+            val lines = if (horizontal) h else w
+            for (line in 0 until lines) {
+                var sumR = 0; var sumG = 0; var sumB = 0; var sumA = 0; var count = 0
+                for (i in -r..r) {
+                    val idx = i.coerceIn(0, len - 1)
+                    val p = src[index(idx, line, w, horizontal)]
+                    sumA += (p ushr 24) and 0xFF
+                    sumR += (p shr 16) and 0xFF
+                    sumG += (p shr 8) and 0xFF
+                    sumB += p and 0xFF
+                    count++
+                }
+                for (i in 0 until len) {
+                    dst[index(i, line, w, horizontal)] =
+                        ((sumA / count) shl 24) or
+                            ((sumR / count) shl 16) or
+                            ((sumG / count) shl 8) or
+                            (sumB / count)
+                    val outIdx = (i - r).coerceIn(0, len - 1)
+                    val inIdx = (i + r + 1).coerceIn(0, len - 1)
+                    val pOut = src[index(outIdx, line, w, horizontal)]
+                    val pIn = src[index(inIdx, line, w, horizontal)]
+                    sumA += ((pIn ushr 24) and 0xFF) - ((pOut ushr 24) and 0xFF)
+                    sumR += ((pIn shr 16) and 0xFF) - ((pOut shr 16) and 0xFF)
+                    sumG += ((pIn shr 8) and 0xFF) - ((pOut shr 8) and 0xFF)
+                    sumB += (pIn and 0xFF) - (pOut and 0xFF)
+                }
+            }
+        }
+
+        private fun index(i: Int, line: Int, w: Int, horizontal: Boolean): Int =
+            if (horizontal) line * w + i else i * w + line
     }
 
     private fun drawPattern(canvas: Canvas, id: String, color: Int, w: Float, h: Float) {

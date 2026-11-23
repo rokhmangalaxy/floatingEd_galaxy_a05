@@ -31,6 +31,13 @@
     <string name="panel_frame_hint">Atur letak gambar relatif terhadap bingkai. Ketuk 9 titik untuk menempelkan posisi, atau geser bebas.</string>
     <string name="panel_background_title">Latar</string>
     <string name="panel_text_title">Teks</string>
+    <string name="panel_mirror_title">Cermin &amp; putar</string>
+    <string name="panel_mirror_hint">Cermin membalik gambar terhadap bingkai; teks tidak ikut terbalik.</string>
+    <string name="rotate_left">Putar kiri</string>
+    <string name="rotate_right">Putar kanan</string>
+    <string name="pick_image">Pilih gambar</string>
+    <string name="empty_title">Belum ada gambar</string>
+    <string name="empty_body">Bagikan gambar ke FloatPic dari aplikasi mana pun, atau pilih dari galeri.</string>
     <string name="panel_rotate_title">Putar &amp; cermin</string>
 
     <string name="label_fill">Penuh</string>

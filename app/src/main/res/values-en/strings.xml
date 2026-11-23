@@ -31,6 +31,13 @@
     <string name="panel_frame_hint">Place the image relative to its frame. Tap one of the 9 dots to snap, or drag freely.</string>
     <string name="panel_background_title">Background</string>
     <string name="panel_text_title">Text</string>
+    <string name="panel_mirror_title">Mirror &amp; rotate</string>
+    <string name="panel_mirror_hint">Mirroring flips the image inside its frame; the text overlay stays upright.</string>
+    <string name="rotate_left">Rotate left</string>
+    <string name="rotate_right">Rotate right</string>
+    <string name="pick_image">Pick image</string>
+    <string name="empty_title">No image yet</string>
+    <string name="empty_body">Share an image to FloatPic from any app, or pick one from your gallery.</string>
     <string name="panel_rotate_title">Rotate &amp; mirror</string>
 
     <string name="label_fill">Fill</string>

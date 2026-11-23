@@ -84,6 +84,25 @@ class EditorActivity : ComponentActivity() {
             }
         }
 
+    private val openDocument = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            vm.loadImage { ImageLoader.load(this, uri) }
+        }
+    }
+
+    private val pickImage = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) vm.loadImage { ImageLoader.load(this, uri) }
+    }
+
     private val overlayLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
@@ -193,6 +212,18 @@ class EditorActivity : ComponentActivity() {
                             onTextPosition = vm::setTextPosition,
                             onTextStyle = vm::setTextStyle,
                             onTextSize = vm::setTextSize,
+                            onPickImage = {
+                                runCatching {
+                                    pickImage.launch(
+                                        androidx.activity.result.PickVisualMediaRequest(
+                                            ActivityResultContracts.PickVisualMedia.ImageOnly,
+                                        ),
+                                    )
+                                }.onFailure {
+                                    // no photo picker (rare): fall back to the document picker
+                                    openDocument.launch(arrayOf("image/*"))
+                                }
+                            },
                         )
                     }
 

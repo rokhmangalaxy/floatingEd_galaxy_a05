@@ -46,16 +46,48 @@ object FloatIcons {
         }
     }
 
-    /** Relative position: an image frame with a movable dot + arrows. */
+    /** Relative position: arrows pushing the content inside its frame. */
     @Composable
     fun Position(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
         val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
         Canvas(modifier.size(22.dp)) {
             val s = size.minDimension / VIEW
-            roundRectStroke(3f, 4f, 18f, 16f, 3f, s, c)
-            drawCircle(c, radius = 2.1f * s, center = Offset(9f * s, 9f * s))
-            line(9f, 12.4f, 9f, 17f, s, c, 1.4f)
-            line(12.4f, 9f, 17f, 9f, s, c, 1.4f)
+            // frame
+            roundRectStroke(3f, 3f, 18f, 18f, 3.5f, s, c.copy(alpha = 0.45f), 1.5f)
+            // image block, offset toward top-left
+            drawRoundRect(
+                color = c,
+                topLeft = Offset(6.4f * s, 6.4f * s),
+                size = Size(6.6f * s, 6.6f * s),
+                cornerRadius = CornerRadius(1.6f * s),
+            )
+            // two nudge arrows (right + down) showing relative movement
+            line(13.6f, 9.7f, 18.4f, 9.7f, s, c, 1.6f)
+            line(18.4f, 9.7f, 16.6f, 7.9f, s, c, 1.6f)
+            line(18.4f, 9.7f, 16.6f, 11.5f, s, c, 1.6f)
+            line(9.7f, 13.6f, 9.7f, 18.4f, s, c, 1.6f)
+            line(9.7f, 18.4f, 7.9f, 16.6f, s, c, 1.6f)
+            line(9.7f, 18.4f, 11.5f, 16.6f, s, c, 1.6f)
+        }
+    }
+
+    /** Pick an image from the gallery. */
+    @Composable
+    fun Gallery(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(22.dp)) {
+            val s = size.minDimension / VIEW
+            roundRectStroke(3f, 4.5f, 18f, 15f, 3f, s, c, 1.7f)
+            drawCircle(c, radius = 1.8f * s, center = Offset(8f * s, 9.5f * s))
+            val p = Path().apply {
+                moveTo(4.4f * s, 17.4f * s)
+                lineTo(9.8f * s, 12.2f * s)
+                lineTo(13.4f * s, 15.6f * s)
+                lineTo(15.6f * s, 13.4f * s)
+                lineTo(19.6f * s, 17.4f * s)
+                close()
+            }
+            drawPath(p, c)
         }
     }
 

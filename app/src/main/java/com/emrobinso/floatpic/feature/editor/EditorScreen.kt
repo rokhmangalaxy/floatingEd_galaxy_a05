@@ -71,7 +71,7 @@ import com.emrobinso.floatpic.ui.theme.AppTheme
 import com.emrobinso.floatpic.ui.theme.LocalExtra
 import kotlinx.coroutines.delay
 
-enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT }
+enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT, MIRROR }
 
 /** Label shown on the ratio chip. */
 fun AspectPreset.chipLabel(): String = when (this) {
@@ -142,6 +142,7 @@ fun EditorScreen(
     onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
+    onPickImage: () -> Unit,
 ) {
     var tool by remember { mutableStateOf(Tool.NONE) }
     var guides by remember { mutableStateOf(false) }
@@ -187,7 +188,7 @@ fun EditorScreen(
                 when {
                     loading -> LoadingState()
                     error != null -> ErrorState(error)
-                    bitmap == null -> EmptyState()
+                    bitmap == null -> EmptyState(onPickImage)
                     else -> EditorViewport(
                         state = state,
                         bitmap = bitmap,
@@ -353,6 +354,9 @@ private fun ToolRow(active: Tool, onTool: (Tool) -> Unit) {
         ToolButton(ctx.getString(R.string.tool_text), active == Tool.TEXT,
             { FloatIcons.TextIcon(tint = if (active == Tool.TEXT) scheme.onPrimary else scheme.onSurface) },
         ) { onTool(Tool.TEXT) }
+        ToolButton(ctx.getString(R.string.tool_mirror), active == Tool.MIRROR,
+            { FloatIcons.MirrorH(tint = if (active == Tool.MIRROR) scheme.onPrimary else scheme.onSurface) },
+        ) { onTool(Tool.MIRROR) }
     }
 }
 
@@ -452,14 +456,42 @@ private fun ErrorState(message: String) {
 }
 
 @Composable
-private fun EmptyState() {
+private fun EmptyState(onPick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = LocalContext.current.getString(R.string.no_image),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(24.dp),
-        )
+        ) {
+            FloatIcons.Gallery(tint = scheme.primary, modifier = Modifier.size(34.dp))
+            Spacer(Modifier.height(10.dp))
+            Text(
+                ctx.getString(R.string.empty_title),
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                color = scheme.onSurface,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                ctx.getString(R.string.empty_body),
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                color = scheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(scheme.primary)
+                    .clickable(onClick = onPick)
+                    .padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(ctx.getString(R.string.pick_image), color = scheme.onPrimary, fontSize = 12.sp)
+            }
+        }
     }
 }
 
@@ -591,47 +623,53 @@ private fun ToolPanel(
             }
 
             Tool.TEXT -> TextPanel(state, onText, onTextPosition, onTextStyle, onTextSize)
+
+            Tool.MIRROR -> {
+                SectionTitle(ctx.getString(R.string.panel_mirror_title))
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MirrorTile(
+                        label = ctx.getString(R.string.tool_mirror_h),
+                        active = state.transform.flipH,
+                        icon = { FloatIcons.MirrorH(tint = scheme.primary, modifier = Modifier.size(22.dp)) },
+                        onClick = onFlipH,
+                    )
+                    MirrorTile(
+                        label = ctx.getString(R.string.tool_mirror_v),
+                        active = state.transform.flipV,
+                        icon = { FloatIcons.MirrorV(tint = scheme.primary, modifier = Modifier.size(22.dp)) },
+                        onClick = onFlipV,
+                    )
+                    MirrorTile(
+                        label = ctx.getString(R.string.rotate_left),
+                        active = false,
+                        icon = { FloatIcons.Rotate(tint = scheme.primary, modifier = Modifier.size(22.dp)) },
+                        onClick = { onRotate(-90f) },
+                    )
+                    MirrorTile(
+                        label = ctx.getString(R.string.rotate_right),
+                        active = false,
+                        icon = { FloatIcons.Rotate(tint = scheme.primary, modifier = Modifier.size(22.dp)) },
+                        onClick = { onRotate(90f) },
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Hint(ctx.getString(R.string.panel_mirror_hint))
+            }
+
             Tool.NONE -> Unit
         }
 
-        if (tool != Tool.NONE) {
-            Spacer(Modifier.height(6.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                MiniAction(
-                    label = "-90°",
-                    icon = { FloatIcons.Rotate(tint = scheme.onSurface, modifier = Modifier.size(19.dp)) },
-                    onClick = { onRotate(-90f) },
-                )
-                MiniAction(
-                    label = "+90°",
-                    icon = { FloatIcons.Rotate(tint = scheme.onSurface, modifier = Modifier.size(19.dp)) },
-                    onClick = { onRotate(90f) },
-                )
-                MiniAction(
-                    label = ctx.getString(R.string.tool_mirror_h),
-                    icon = { FloatIcons.MirrorH(tint = scheme.onSurface, modifier = Modifier.size(19.dp)) },
-                    onClick = onFlipH,
-                )
-                MiniAction(
-                    label = ctx.getString(R.string.tool_mirror_v),
-                    icon = { FloatIcons.MirrorV(tint = scheme.onSurface, modifier = Modifier.size(19.dp)) },
-                    onClick = onFlipV,
-                )
-                MiniAction(
-                    label = ctx.getString(R.string.action_close),
-                    primary = true,
-                    icon = { FloatIcons.Check(tint = scheme.onPrimary, modifier = Modifier.size(19.dp)) },
-                    onClick = onDone,
-                )
-            }
-        }
     }
 }
 
 @Composable
-private fun MiniAction(
+private fun MirrorTile(
     label: String,
-    primary: Boolean = false,
+    active: Boolean,
     icon: @Composable () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -639,16 +677,23 @@ private fun MiniAction(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (primary) scheme.primary else Color.Transparent)
+            .weight(1f)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (active) scheme.primaryContainer else scheme.surface.copy(.85f))
+            .border(
+                if (active) 1.5.dp else 1.dp,
+                if (active) scheme.primary else scheme.outline.copy(.45f),
+                RoundedCornerShape(14.dp),
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .padding(vertical = 8.dp),
     ) {
         icon()
+        Spacer(Modifier.height(4.dp))
         Text(
             label,
             fontSize = 9.sp,
-            color = if (primary) scheme.onPrimary else scheme.onSurfaceVariant,
+            color = if (active) scheme.primary else scheme.onSurfaceVariant,
             maxLines = 1,
         )
     }
