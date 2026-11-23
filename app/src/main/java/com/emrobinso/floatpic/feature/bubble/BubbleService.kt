@@ -214,11 +214,6 @@ class BubbleService : Service() {
                     startActivity(restoreIntent().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
-            onHoldTick = { p ->
-                BubbleState.progress.floatValue = p
-                if (p >= 0.30f && p < 0.36f) haptic(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                if (p >= 0.72f && p < 0.78f) haptic(android.view.HapticFeedbackConstants.CLOCK_TICK)
-            },
             onClose = {
                 haptic(android.view.HapticFeedbackConstants.LONG_PRESS)
                 closeApp()
@@ -255,7 +250,6 @@ class BubbleService : Service() {
     }
 
     private fun closeApp() {
-        BubbleState.progress.floatValue = 0f
         runCatching { if (view != null) windowManager.removeView(view) }
         view = null
         val id = sessionId
@@ -321,7 +315,6 @@ class BubbleService : Service() {
 /** UI state shared between the service and the bubble composable. */
 object BubbleState {
     val reduce = mutableStateOf(false)
-    val progress = androidx.compose.runtime.mutableFloatStateOf(0f)
 }
 
 @Composable
@@ -331,11 +324,27 @@ private fun BubbleContent(
     onDrag: (Float, Float) -> Unit,
     onDragEnd: () -> Unit,
     onTap: () -> Unit,
-    onHoldTick: (Float) -> Unit,
     onClose: () -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
-    val progress = BubbleState.progress.floatValue
+    var dragging by remember { mutableStateOf(false) }
+    val hapticView = LocalView.current
+    var lastTick by remember { mutableStateOf(0) }
+    val progress = rememberHoldProgress(pressed = pressed, dragging = dragging, onClose = onClose)
+    LaunchedEffect(progress) {
+        val bucket = when {
+            progress >= 1f -> 2
+            progress >= 0.72f -> 1
+            progress >= 0.30f -> 0
+            else -> -1
+        }
+        if (bucket > lastTick) {
+            lastTick = bucket
+            hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+        } else if (bucket < lastTick) {
+            lastTick = bucket
+        }
+    }
     val reduce = BubbleState.reduce.value
     val scale by animateFloatAsState(
         targetValue = if (reduce && !pressed) 0.78f else 1f,
@@ -348,12 +357,10 @@ private fun BubbleContent(
             .scale(scale)
             .bubbleGestures(
                 onPressChange = { pressed = it },
-                onDragStart = onDragStart,
+                onDragStart = { dragging = true; onDragStart() },
                 onDrag = onDrag,
-                onDragEnd = onDragEnd,
+                onDragEnd = { dragging = false; onDragEnd() },
                 onTap = onTap,
-                onHoldTick = onHoldTick,
-                onClose = onClose,
             ),
     ) {
         androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
@@ -437,36 +444,19 @@ private fun Modifier.bubbleGestures(
     onDrag: (Float, Float) -> Unit,
     onDragEnd: () -> Unit,
     onTap: () -> Unit,
-    onHoldTick: (Float) -> Unit,
-    onClose: () -> Unit,
 ): Modifier = pointerInput(Unit) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         onPressChange(true)
         var dragging = false
-        var closed = false
         val slop = 12.dp.toPx()
         try {
-            val holdJob = launch {
-                var elapsed = 0L
-                while (elapsed < HOLD_MS) {
-                    delay(40)
-                    elapsed += 40
-                    onHoldTick((elapsed.toFloat() / HOLD_MS).coerceIn(0f, 1f))
-                }
-                closed = true
-                onHoldTick(0f)
-                onClose()
-            }
-            while (!closed) {
+            while (true) {
                 val event = awaitPointerEvent()
                 val change = event.changes.firstOrNull { it.id == down.id }
                 if (change == null || !change.pressed) break
-                val travel = (change.position - down.position).getDistance()
-                if (!dragging && travel > slop) {
+                if (!dragging && (change.position - down.position).getDistance() > slop) {
                     dragging = true
-                    holdJob.cancel()
-                    onHoldTick(0f)
                     onDragStart()
                 }
                 if (dragging) {
@@ -475,19 +465,39 @@ private fun Modifier.bubbleGestures(
                     change.consume()
                 }
             }
-            onPressChange(false)
-            if (!closed) {
-                if (dragging) {
-                    onDragEnd()
-                } else {
-                    onHoldTick(0f)
-                    onTap()
-                }
-            }
+            if (dragging) onDragEnd() else onTap()
         } finally {
-            onHoldTick(0f)
+            onPressChange(false)
         }
     }
+}
+
+/**
+ * Hold timer driven by frame ticks (survives "no more pointer events while held").
+ * Returns 0..1 progress; fires [onClose] once per 1.6 s hold.
+ */
+@Composable
+private fun rememberHoldProgress(
+    pressed: Boolean,
+    dragging: Boolean,
+    onClose: () -> Unit,
+): Float {
+    var progress by remember { mutableStateOf(0f) }
+    LaunchedEffect(pressed, dragging) {
+        if (!pressed || dragging) {
+            progress = 0f
+            return@LaunchedEffect
+        }
+        var elapsed = 0L
+        while (elapsed < HOLD_MS) {
+            delay(16)
+            elapsed += 16
+            progress = (elapsed.toFloat() / HOLD_MS).coerceIn(0f, 1f)
+        }
+        progress = 0f
+        onClose()
+    }
+    return progress
 }
 
 private const val HOLD_MS = 1600L
