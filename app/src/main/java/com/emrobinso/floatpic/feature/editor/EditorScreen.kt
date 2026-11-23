@@ -9,6 +9,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,7 +19,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -56,6 +60,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.asImageBitmap
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.core.model.AspectPreset
 import com.emrobinso.floatpic.core.model.BackgroundKind
@@ -143,6 +148,10 @@ fun EditorScreen(
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
     onPickImage: () -> Unit,
+    history: List<com.emrobinso.floatpic.data.HistoryEntry>,
+    onHistory: () -> Unit,
+    onOpenHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
+    onDeleteHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
 ) {
     var tool by remember { mutableStateOf(Tool.NONE) }
     var guides by remember { mutableStateOf(false) }
@@ -177,27 +186,47 @@ fun EditorScreen(
                 onRedo = onRedo,
                 onThemeToggle = onThemeToggle,
                 onMinimize = onMinimize,
+                onHistory = onHistory,
             )
 
+            // square preview container (user request); the actual aspect window is centred inside
             Box(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 10.dp),
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                when {
-                    loading -> LoadingState()
-                    error != null -> ErrorState(error)
-                    bitmap == null -> EmptyState(onPickImage)
-                    else -> EditorViewport(
-                        state = state,
-                        bitmap = bitmap,
-                        haptics = haptics,
-                        showGuides = guides || tool == Tool.CROP || tool == Tool.FRAME,
-                        onPreview = onPreview,
-                        onCommit = onCommit,
-                        modifier = Modifier.padding(vertical = 4.dp),
-                    )
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(.35f),
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(.15f),
+                                ),
+                            ),
+                        )
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when {
+                        loading -> LoadingState()
+                        error != null -> ErrorState(error)
+                        bitmap == null -> EmptyState(onPickImage)
+                        else -> EditorViewport(
+                            state = state,
+                            bitmap = bitmap,
+                            haptics = haptics,
+                            showGuides = guides || tool == Tool.CROP || tool == Tool.FRAME,
+                            onPreview = onPreview,
+                            onCommit = onCommit,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
 
@@ -235,6 +264,18 @@ fun EditorScreen(
                 )
             }
 
+            AnimatedVisibility(
+                visible = history.isNotEmpty() && tool == Tool.NONE,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                HistoryStrip(
+                    history = history,
+                    onOpen = onOpenHistory,
+                    onDelete = onDeleteHistory,
+                )
+            }
+
             ActionBar(onSave = onSave, onShare = onShare)
             Spacer(
                 Modifier.height(
@@ -255,6 +296,7 @@ private fun TopBar(
     onRedo: () -> Unit,
     onThemeToggle: () -> Unit,
     onMinimize: () -> Unit,
+    onHistory: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     Row(
@@ -284,6 +326,7 @@ private fun TopBar(
         RoundIconButton(enabled = canRedo, onClick = onRedo) {
             FloatIcons.Redo(tint = if (canRedo) scheme.onSurface else scheme.onSurface.copy(.28f))
         }
+        RoundIconButton(onClick = onHistory) { FloatIcons.History(tint = scheme.onSurface) }
         RoundIconButton(onClick = onThemeToggle) { FloatIcons.Palette(tint = scheme.onSurface) }
         RoundIconButton(onClick = onMinimize) { FloatIcons.Minimize(tint = scheme.onSurface) }
     }
@@ -433,6 +476,58 @@ private fun ActionBar(onSave: () -> Unit, onShare: () -> Unit) {
             FloatIcons.Share(tint = scheme.onPrimary)
             Spacer(Modifier.width(8.dp))
             Text(ctx.getString(R.string.action_share), color = scheme.onPrimary, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HistoryStrip(
+    history: List<com.emrobinso.floatpic.data.HistoryEntry>,
+    onOpen: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
+    onDelete: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
+        Text(
+            ctx.getString(R.string.history_title, history.size),
+            fontSize = 10.sp,
+            color = scheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 3.dp, start = 2.dp),
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            history.forEach { entry ->
+                val thumb: Bitmap? = remember(entry.id) {
+                    android.graphics.BitmapFactory.decodeFile(entry.thumb)
+                }
+                Box(
+                    Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(scheme.surfaceVariant)
+                        .border(1.dp, scheme.outline.copy(.35f), RoundedCornerShape(10.dp))
+                        .combinedClickable(
+                            onClick = { onOpen(entry) },
+                            onLongClickLabel = ctx.getString(R.string.history_delete),
+                            onLongClick = { onDelete(entry) },
+                        ),
+                ) {
+                    if (thumb != null) {
+                        androidx.compose.foundation.Image(
+                            bitmap = thumb.asImageBitmap(),
+                            contentDescription = ctx.getString(R.string.history_open),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
         }
     }
 }

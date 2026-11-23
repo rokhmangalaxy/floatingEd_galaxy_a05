@@ -213,6 +213,25 @@ object FloatIcons {
     }
 
     @Composable
+    fun History(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(22.dp)) {
+            val s = size.minDimension / VIEW
+            // clock face with a gap at the upper-left + rewind arrow across that gap
+            drawArc(
+                color = c, startAngle = -230f, sweepAngle = 300f, useCenter = false,
+                topLeft = Offset(4.2f * s, 4.2f * s), size = Size(15.6f * s, 15.6f * s),
+                style = Stroke(1.7f * s, cap = StrokeCap.Round),
+            )
+            line(11.6f, 8.4f, 11.6f, 12.4f, s, c, 1.7f)
+            line(11.6f, 12.4f, 14.4f, 14f, s, c, 1.7f)
+            // arrow head pointing into the clock at ~10 o'clock
+            line(4.6f, 5.2f, 8.4f, 4.4f, s, c, 1.6f)
+            line(4.6f, 5.2f, 5.2f, 9f, s, c, 1.6f)
+        }
+    }
+
+    @Composable
     fun Palette(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
         val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
         Canvas(modifier.size(22.dp)) {

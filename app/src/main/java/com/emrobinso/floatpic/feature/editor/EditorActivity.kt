@@ -3,6 +3,7 @@ package com.emrobinso.floatpic.feature.editor
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -11,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.core.animateFloatAsState
@@ -23,10 +25,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,16 +59,16 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.core.image.ImageLoader
-import com.emrobinso.floatpic.core.image.LoadedImage
 import com.emrobinso.floatpic.data.DraftStore
 import com.emrobinso.floatpic.data.Exporter
+import com.emrobinso.floatpic.data.HistoryStore
 import com.emrobinso.floatpic.feature.bubble.BubbleService
 import com.emrobinso.floatpic.ui.rememberHaptics
 import com.emrobinso.floatpic.ui.theme.AppTheme
 import com.emrobinso.floatpic.ui.theme.FloatPicTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import java.io.File
 
 class EditorActivity : ComponentActivity() {
 
@@ -84,6 +86,11 @@ class EditorActivity : ComponentActivity() {
             }
         }
 
+    /** photo picker (API 19+ via backport, no permission needed) */
+    private val pickImage = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri -> if (uri != null) openUri(uri) }
+
     private val openDocument = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -93,26 +100,21 @@ class EditorActivity : ComponentActivity() {
                     uri, Intent.FLAG_GRANT_READ_URI_PERMISSION,
                 )
             }
-            vm.loadImage { ImageLoader.load(this, uri) }
+            openUri(uri)
         }
     }
 
-    private val pickImage = registerForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
-        if (uri != null) vm.loadImage { ImageLoader.load(this, uri) }
-    }
-
+    /**
+     * Overlay permission. Never lets an OEM activity exception escape (that was the
+     * force close): we always fall back to the global settings page, then to a toast.
+     */
     private val overlayLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
         if (!pendingMinimize) return@registerForActivityResult
         pendingMinimize = false
-        if (BubbleService.canDrawOverlays(this)) {
-            minimize(lifecycleScope)
-        } else {
-            Toast.makeText(this, R.string.bubble_permission_denied, Toast.LENGTH_SHORT).show()
-        }
+        if (BubbleService.canDrawOverlays(this)) minimize(lifecycleScope)
+        else Toast.makeText(this, R.string.bubble_permission_denied, Toast.LENGTH_SHORT).show()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -128,8 +130,7 @@ class EditorActivity : ComponentActivity() {
             runCatching { notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
         }
 
-        // restore the last used theme synchronously: avoids a flash of the wrong theme
-        val savedTheme = runBlocking { runCatching { DraftStore.theme(this@EditorActivity) }.getOrNull() }
+        val savedTheme = runCatching { DraftStore.theme(this) }.getOrNull()
         if (savedTheme != null) vm.setTheme(savedTheme)
 
         handleIntent(intent)
@@ -138,23 +139,23 @@ class EditorActivity : ComponentActivity() {
             val ui by vm.ui.collectAsState()
             val scope = rememberCoroutineScope()
             var showMinimizePrompt by remember { mutableStateOf(false) }
+            var historyOpen by remember { mutableStateOf(false) }
+            var history by remember { mutableStateOf<List<com.emrobinso.floatpic.data.HistoryEntry>>(emptyList()) }
             val enter by animateFloatAsState(1f, tween(220), label = "enter")
             val ctx = LocalContext.current
+
+            suspend fun refreshHistory() {
+                history = HistoryStore.list(ctx)
+            }
+            LaunchedEffect(historyOpen) { if (historyOpen) refreshHistory() }
 
             FloatPicTheme(theme = ui.theme, dark = false) {
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.42f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { if (!ui.loading) finish() },
-                        ),
+                        .background(Color.Black.copy(alpha = 0.42f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    val maxH = (resources.displayMetrics.heightPixels /
-                        resources.displayMetrics.density * 0.9f).dp
                     Box(
                         Modifier
                             .graphicsLayer {
@@ -162,10 +163,8 @@ class EditorActivity : ComponentActivity() {
                                 scaleY = 0.94f + 0.06f * enter
                                 alpha = enter
                             }
-                            .navigationBarsPadding()
-                            .padding(vertical = 10.dp)
-                            .fillMaxWidth(0.97f)
-                            .height(maxH)
+                            .fillMaxWidth(0.80f)
+                            .fillMaxHeight(0.70f)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -180,10 +179,34 @@ class EditorActivity : ComponentActivity() {
                             error = ui.error,
                             canUndo = ui.canUndo,
                             canRedo = ui.canRedo,
+                            history = history,
                             haptics = rememberHaptics(),
                             modifier = Modifier.fillMaxSize(),
                             onClose = { finish() },
                             onMinimize = { showMinimizePrompt = true },
+                            onHistory = {
+                                historyOpen = !historyOpen
+                                if (historyOpen) scope.launch { refreshHistory() }
+                            },
+                            onDeleteHistory = { entry ->
+                                scope.launch {
+                                    HistoryStore.delete(ctx, entry.id)
+                                    refreshHistory()
+                                }
+                            },
+                            onOpenHistory = { entry ->
+                                val snapshot = HistoryStore.snapshotOf(ctx, entry)
+                                if (snapshot == null) {
+                                    Toast.makeText(this@EditorActivity, R.string.open_failed, Toast.LENGTH_SHORT).show()
+                                } else {
+                                    historyOpen = false
+                                    lifecycleScope.launch {
+                                        val file = File(entry.source)
+                                        vm.loadImage { ImageLoader.loadFile(this@EditorActivity, file) }
+                                        vm.restore(snapshot)
+                                    }
+                                }
+                            },
                             onThemeToggle = {
                                 val next = if (ui.theme == AppTheme.PASTEL_MAROON)
                                     AppTheme.NEUMORPHISM else AppTheme.PASTEL_MAROON
@@ -215,14 +238,9 @@ class EditorActivity : ComponentActivity() {
                             onPickImage = {
                                 runCatching {
                                     pickImage.launch(
-                                        androidx.activity.result.PickVisualMediaRequest(
-                                            ActivityResultContracts.PickVisualMedia.ImageOnly,
-                                        ),
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                                     )
-                                }.onFailure {
-                                    // no photo picker (rare): fall back to the document picker
-                                    openDocument.launch(arrayOf("image/*"))
-                                }
+                                }.onFailure { openDocument.launch(arrayOf("image/*")) }
                             },
                         )
                     }
@@ -266,7 +284,7 @@ class EditorActivity : ComponentActivity() {
         val sessionId = intent.getStringExtra(EXTRA_RESTORE_SESSION)
         if (sessionId != null) {
             // the editor is taking over: the bubble must not float above it
-            BubbleService.hide(this)
+            runCatching { BubbleService.hide(this) }
             restoreSession(sessionId)
             return
         }
@@ -279,31 +297,28 @@ class EditorActivity : ComponentActivity() {
         }
 
         if (uri != null) {
-            vm.loadImage { ImageLoader.load(this, uri) }
+            openUri(uri)
         } else if (action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE) {
             Toast.makeText(this, R.string.no_image, Toast.LENGTH_SHORT).show()
         } else {
             // cold start from the launcher: bundled sample keeps the editor explorable
             vm.loadImage {
                 val bmp = android.graphics.BitmapFactory.decodeStream(assets.open("sample_photo.jpg"))
-                LoadedImage(bmp, 0)
+                com.emrobinso.floatpic.core.image.LoadedImage(bmp, 0, null)
             }
         }
+    }
+
+    private fun openUri(uri: Uri) {
+        vm.loadImage { ImageLoader.load(this, uri) }
     }
 
     private fun restoreSession(sessionId: String) {
         lifecycleScope.launch {
             val snapshot = DraftStore.load(this@EditorActivity, sessionId) ?: return@launch
-            val uri = snapshot.sourceUri?.let { Uri.parse(it) }
-            if (uri != null) {
-                vm.loadImage {
-                    runCatching { ImageLoader.load(this@EditorActivity, uri) }.getOrElse {
-                        val bmp = android.graphics.BitmapFactory.decodeStream(
-                            assets.open("sample_photo.jpg"),
-                        )
-                        LoadedImage(bmp, 0)
-                    }
-                }
+            val file = snapshot.sourceUri?.let { File(it) }
+            if (file != null && file.exists()) {
+                vm.loadImage { ImageLoader.loadFile(this@EditorActivity, file) }
             }
             vm.restore(snapshot)
         }
@@ -315,12 +330,21 @@ class EditorActivity : ComponentActivity() {
             return
         }
         pendingMinimize = true
-        overlayLauncher.launch(
-            Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName"),
-            ),
-        )
+        val launched = runCatching {
+            overlayLauncher.launch(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
+            )
+        }.isSuccess
+
+        if (!launched) {
+            val globalLaunched = runCatching {
+                overlayLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+            }.isSuccess
+            if (!globalLaunched) {
+                pendingMinimize = false
+                Toast.makeText(this, R.string.bubble_permission_denied, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun minimize(scope: CoroutineScope) {
@@ -330,25 +354,37 @@ class EditorActivity : ComponentActivity() {
             return
         }
         scope.launch {
+            runCatching { recordHistory() }
             val sessionId = "session_${System.currentTimeMillis()}"
-            val shareCopy = runCatching { Exporter.writeShareCopy(this@EditorActivity, bmp) }.getOrNull()
             val thumb = vm.bubbleThumb()
             val thumbUri = thumb?.let { runCatching { Exporter.writeThumb(this@EditorActivity, it) }.getOrNull() }
-            DraftStore.save(
-                this@EditorActivity,
-                sessionId,
-                DraftSnapshot(
-                    sourceUri = shareCopy?.toString(),
-                    state = vm.currentState(),
-                    theme = vm.currentTheme(),
-                ),
-            )
-            BubbleService.start(this@EditorActivity, sessionId, thumbUri)
-            finishAndRemoveTask()
+            val source = vm.sourceFile?.absolutePath
+            if (source != null) {
+                DraftStore.save(
+                    this@EditorActivity,
+                    sessionId,
+                    DraftSnapshot(
+                        sourceUri = source,
+                        state = vm.currentState(),
+                        theme = vm.currentTheme(),
+                    ),
+                )
+                BubbleService.start(this@EditorActivity, sessionId, thumbUri)
+                finishAndRemoveTask()
+            } else {
+                Toast.makeText(this@EditorActivity, R.string.save_failed, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
-    private fun renderCurrent(): android.graphics.Bitmap? {
+    private suspend fun recordHistory() {
+        val bmp = vm.source ?: return
+        runCatching {
+            HistoryStore.record(this, bmp, vm.currentState(), vm.currentTheme())
+        }
+    }
+
+    private fun renderCurrent(): Bitmap? {
         val bmp = vm.source ?: return null
         return runCatching { Exporter.render(this, bmp, vm.currentState(), vm.orientation) }.getOrNull()
     }
@@ -373,6 +409,7 @@ class EditorActivity : ComponentActivity() {
                     Toast.makeText(this@EditorActivity, R.string.save_failed, Toast.LENGTH_SHORT).show()
                 }
             out.recycle()
+            recordHistory()
         }
     }
 
@@ -384,13 +421,18 @@ class EditorActivity : ComponentActivity() {
         }
         val uri = runCatching { Exporter.writeShareCopy(this, out) }.getOrNull()
         out.recycle()
+        lifecycleScope.launch { recordHistory() }
         if (uri == null) {
             Toast.makeText(this, R.string.share_failed, Toast.LENGTH_SHORT).show()
             return
         }
-        startActivity(
-            Intent.createChooser(ShareIntents.shareImage(this, uri), getString(R.string.action_share)),
-        )
+        runCatching {
+            startActivity(
+                Intent.createChooser(ShareIntents.shareImage(this, uri), getString(R.string.action_share)),
+            )
+        }.onFailure {
+            Toast.makeText(this, R.string.share_failed, Toast.LENGTH_SHORT).show()
+        }
     }
 }
 
@@ -418,7 +460,7 @@ private fun MinimizeDialog(
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
             modifier = Modifier
-                .fillMaxWidth(0.86f)
+                .fillMaxWidth(0.9f)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,

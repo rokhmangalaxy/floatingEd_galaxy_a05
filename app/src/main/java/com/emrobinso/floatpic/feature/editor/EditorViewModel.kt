@@ -41,6 +41,10 @@ class EditorViewModel : ViewModel() {
     var orientation: Int = 0
         private set
 
+    /** Local, re-editable copy of the current source (used to record history). */
+    var sourceFile: java.io.File? = null
+        private set
+
     private val undo = ArrayDeque<EditorState>()
     private val redo = ArrayDeque<EditorState>()
     private var committed: EditorState = EditorState()
@@ -53,6 +57,7 @@ class EditorViewModel : ViewModel() {
                     source?.recycle()
                     source = loaded.bitmap
                     orientation = loaded.orientation
+                    sourceFile = loaded.cacheFile
                     committed = EditorState()
                     undo.clear()
                     redo.clear()

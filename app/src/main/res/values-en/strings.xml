@@ -36,6 +36,9 @@
     <string name="rotate_left">Rotate left</string>
     <string name="rotate_right">Rotate right</string>
     <string name="pick_image">Pick image</string>
+    <string name="history_title">Recent edits (%1$d/10)</string>
+    <string name="history_open">Re-open</string>
+    <string name="history_delete">Remove from history</string>
     <string name="empty_title">No image yet</string>
     <string name="empty_body">Share an image to FloatPic from any app, or pick one from your gallery.</string>
     <string name="panel_rotate_title">Rotate &amp; mirror</string>

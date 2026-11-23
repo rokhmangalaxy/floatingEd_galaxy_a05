@@ -36,6 +36,9 @@
     <string name="rotate_left">Putar kiri</string>
     <string name="rotate_right">Putar kanan</string>
     <string name="pick_image">Pilih gambar</string>
+    <string name="history_title">Riwayat edit (%1$d/10)</string>
+    <string name="history_open">Buka lagi</string>
+    <string name="history_delete">Hapus dari riwayat</string>
     <string name="empty_title">Belum ada gambar</string>
     <string name="empty_body">Bagikan gambar ke FloatPic dari aplikasi mana pun, atau pilih dari galeri.</string>
     <string name="panel_rotate_title">Putar &amp; cermin</string>
