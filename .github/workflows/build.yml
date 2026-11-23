@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: build-${{ github.ref }}
@@ -73,10 +74,34 @@ jobs:
           FLOATPIC_KEY_PASSWORD: ${{ secrets.FLOATPIC_KEY_PASSWORD || 'floatpic2026' }}
           FLOATPIC_KEY_ALIAS: ${{ secrets.FLOATPIC_KEY_ALIAS || 'floatpic' }}
         run: |
+          set -o pipefail
           ./gradlew :app:assembleRelease \
             -PbuildVersionCode=${{ needs.version.outputs.code }} \
             -PbuildVersionName=${{ needs.version.outputs.name }} \
-            --no-daemon --stacktrace
+            --no-daemon --stacktrace 2>&1 | tee build.log
+
+      # keep a readable copy of compiler diagnostics inside an issue (no log-download needed)
+      - name: Publish build log on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TITLE="CI build log"
+          BODY=$(tail -c 20000 build.log 2>/dev/null | sed 's/\r//g' || echo "no log")
+          NUM=$(gh issue list --label ci-log --state open --json number --jq '.[0].number // empty')
+          if [ -z "$NUM" ]; then
+            gh issue create --title "$TITLE" --label ci-log \
+              --body "Build log capture. Latest run: ${{ github.run_id }}" >/dev/null
+            NUM=$(gh issue list --label ci-log --state open --json number --jq '.[0].number')
+          fi
+          {
+            echo "Run: ${{ github.run_id }} commit: ${GITHUB_SHA:0:7}";
+            echo '```'
+            echo "$BODY"
+            echo '```'
+          } > /tmp/comment.md
+          gh issue comment "$NUM" --body-file /tmp/comment.md
 
       - name: Name the artifact
         run: |
