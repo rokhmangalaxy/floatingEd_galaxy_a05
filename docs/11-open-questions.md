@@ -94,6 +94,20 @@ Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bu
       hanya diubah lewat tombol matahari/bulan.
 - [x] Margin atas/bawah preview dikecilkan dan corner radius kartu 28 → 16 dp.
 
+## v0.2.2 — tata letak, putar, reset, bubble
+
+- [x] **Hapus space kosong atas/bawah**: `statusBarsPadding()` dan spacer navigation bar
+      di dalam kartu dihapus — kartu melayang di tengah layar, jadi inset itu murni ruang mati.
+- [x] **Reset ke asli**: tool baru + tombol di icon row, mengembalikan seluruh `EditorState`
+      ke default (undo bisa membatalkannya).
+- [x] **Rotasi keluar dari pinch**: dua jari untuk zoom selalu membawa sedikit puntiran →
+      gambar ikut berputar. Sekarang rotasi hanya lewat tool **Putar** dengan slider,
+      min/max/step bisa diubah sendiri (default −180…180, step 1°, snap).
+- [x] **Bubble tidak pernah muncul**: minimize gagal (`save_failed`) kalau sumber tidak punya
+      file cache (foto contoh dari launcher). `Exporter.ensureSourceFile()` membuatkannya.
+      `BubbleService` juga tidak lagi mati kalau notifikasi foreground ditolak atau izin
+      overlay dicabut — sekarang muncul pesan, bukan diam saja.
+
 ## Berikutnya (v0.3)
 
 1. Preset kontekstual (screenshot/portrait/meme) + preset simpan sendiri.
