@@ -80,6 +80,7 @@ Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bu
 - [x] Ikon **Rasio** & **Riwayat** ditambahkan ke icon row
 - [x] Toggle **Maroon ⇄ Dark** (matahari/bulan), default Dark, tersimpan
 - [x] Tap area preview menutup panel
+- [x] **Jendela preview mengikuti rasio** (asli atau presisi pilihan) **di dalam** container yang **selalu kotak** — diperbaiki: `fillMaxSize().aspectRatio()` diabaikan saat constraint fixed, jadi dulu jendelanya selalu 1:1 memenuhi kotak
 
 ## Berikutnya (v0.3)
 

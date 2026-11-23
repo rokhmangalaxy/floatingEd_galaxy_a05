@@ -14,7 +14,7 @@
 
 ## Tata letak (v0.2)
 
-- **Container preview kotak (1:1)** — jendela rasio asli / pilihan rasio tampil di tengahnya.
+- **Container preview kotak (1:1)** — jendela preview di dalamnya **mengikuti rasio asli** gambar, atau rasio yang dipilih di panel Rasio (selalu fit di tengah kotak).
 - **Hanya icon row yang permanen**: `Rasio · Crop · Posisi · Latar · Teks · Cermin · Riwayat`.
 - Menu yang dipilih muncul sebagai **overlay di atas preview** — tidak menggeser preview, icon row, maupun tombol Simpan/Share. Hanya panel itu yang bergerak.
 - **Toggle tema**: Maroon ⇄ Dark (ikon matahari/bulan di top bar, tersimpan).
