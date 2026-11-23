@@ -89,11 +89,11 @@ jobs:
           set -e
           TITLE="CI build log"
           BODY=$(tail -c 20000 build.log 2>/dev/null | sed 's/\r//g' || echo "no log")
-          NUM=$(gh issue list --label ci-log --state open --json number --jq '.[0].number // empty')
+          NUM=$(gh issue list --search 'CI build log in:title' --state open --json number --jq '.[0].number // empty')
           if [ -z "$NUM" ]; then
-            gh issue create --title "$TITLE" --label ci-log \
+            gh issue create --title "$TITLE" \
               --body "Build log capture. Latest run: ${{ github.run_id }}" >/dev/null
-            NUM=$(gh issue list --label ci-log --state open --json number --jq '.[0].number')
+            NUM=$(gh issue list --search 'CI build log in:title' --state open --json number --jq '.[0].number')
           fi
           {
             echo "Run: ${{ github.run_id }} commit: ${GITHUB_SHA:0:7}";
