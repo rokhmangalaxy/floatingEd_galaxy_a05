@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -195,7 +196,6 @@ fun EditorScreen(
                 onUndo = onUndo,
                 onRedo = onRedo,
                 onThemeToggle = onThemeToggle,
-                onResetAll = onResetAll,
                 onMinimize = onMinimize,
             )
 
@@ -323,7 +323,6 @@ private fun TopBar(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onThemeToggle: () -> Unit,
-    onResetAll: () -> Unit,
     onMinimize: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -344,18 +343,18 @@ private fun TopBar(
         Text(
             text = "· $title",
             fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             color = scheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp),
+            modifier = Modifier
+                .padding(start = 4.dp)
+                .weight(1f, fill = false),
         )
-        Spacer(Modifier.weight(1f))
         RoundIconButton(enabled = canUndo, onClick = onUndo) {
             FloatIcons.Undo(tint = if (canUndo) scheme.onSurface else scheme.onSurface.copy(.28f))
         }
         RoundIconButton(enabled = canRedo, onClick = onRedo) {
             FloatIcons.Redo(tint = if (canRedo) scheme.onSurface else scheme.onSurface.copy(.28f))
-        }
-        RoundIconButton(onClick = onResetAll) {
-            FloatIcons.ResetAll(tint = scheme.onSurface)
         }
         RoundIconButton(onClick = onThemeToggle) {
             if (dark) FloatIcons.Sun(tint = scheme.onSurface)
