@@ -156,7 +156,6 @@ fun EditorScreen(
     onTextSize: (Float) -> Unit,
     onPickImage: () -> Unit,
     history: List<com.emrobinso.floatpic.data.HistoryEntry>,
-    onHistory: () -> Unit,
     onOpenHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     onDeleteHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
 ) {
@@ -681,8 +680,6 @@ private fun OverlayPanel(
     onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
-    onGuides: () -> Unit,
-    guidesOn: Boolean,
     onDone: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -829,6 +826,38 @@ private fun OverlayPanel(
                 }
                 Spacer(Modifier.height(6.dp))
                 Hint(ctx.getString(R.string.panel_mirror_hint))
+            }
+
+            Tool.RATIO -> {
+                SectionTitle(ctx.getString(R.string.panel_ratio_title))
+                Spacer(Modifier.height(6.dp))
+                RatioChips(selected = state.aspect) { haptics.tick(); onAspect(it) }
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    PillToggle(ctx.getString(R.string.label_fill), state.scaleMode == ScaleMode.FILL) {
+                        onScaleMode(ScaleMode.FILL)
+                    }
+                    PillToggle(ctx.getString(R.string.label_fit), state.scaleMode == ScaleMode.FIT) {
+                        onScaleMode(ScaleMode.FIT)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    PillToggle("Grid", guidesOn, onGuides)
+                }
+            }
+
+            Tool.HISTORY -> {
+                SectionTitle(ctx.getString(R.string.history_title, history.size))
+                Spacer(Modifier.height(6.dp))
+                if (history.isEmpty()) {
+                    Hint(ctx.getString(R.string.history_empty))
+                } else {
+                    HistoryStrip(
+                        history = history,
+                        onOpen = onOpenHistory,
+                        onDelete = onDeleteHistory,
+                        bare = true,
+                    )
+                }
             }
 
             Tool.NONE -> Unit

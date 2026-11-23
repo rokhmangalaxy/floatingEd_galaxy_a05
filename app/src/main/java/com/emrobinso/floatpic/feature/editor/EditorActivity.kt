@@ -138,7 +138,6 @@ class EditorActivity : ComponentActivity() {
             val ui by vm.ui.collectAsState()
             val scope = rememberCoroutineScope()
             var showMinimizePrompt by remember { mutableStateOf(false) }
-            var historyOpen by remember { mutableStateOf(false) }
             var history by remember { mutableStateOf<List<com.emrobinso.floatpic.data.HistoryEntry>>(emptyList()) }
             val enter by animateFloatAsState(1f, tween(220), label = "enter")
             val ctx = LocalContext.current
@@ -146,7 +145,6 @@ class EditorActivity : ComponentActivity() {
             suspend fun refreshHistory() {
                 history = HistoryStore.list(ctx)
             }
-            LaunchedEffect(historyOpen) { if (historyOpen) refreshHistory() }
             LaunchedEffect(ui.savedTick) { refreshHistory() }
             LaunchedEffect(Unit) { refreshHistory() }
 
@@ -185,10 +183,6 @@ class EditorActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxSize(),
                             onClose = { finish() },
                             onMinimize = { showMinimizePrompt = true },
-                            onHistory = {
-                                historyOpen = !historyOpen
-                                if (historyOpen) scope.launch { refreshHistory() }
-                            },
                             onDeleteHistory = { entry ->
                                 scope.launch {
                                     HistoryStore.delete(ctx, entry.id)
@@ -200,7 +194,6 @@ class EditorActivity : ComponentActivity() {
                                 if (snapshot == null) {
                                     Toast.makeText(this@EditorActivity, R.string.open_failed, Toast.LENGTH_SHORT).show()
                                 } else {
-                                    historyOpen = false
                                     lifecycleScope.launch {
                                         val file = File(entry.source)
                                         vm.loadImage { ImageLoader.loadFile(this@EditorActivity, file) }
