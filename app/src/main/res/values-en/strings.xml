@@ -86,4 +86,13 @@
     <string name="theme_neu">Neumorphism</string>
     <string name="theme_maroon">Pastel Maroon</string>
     <string name="theme_dialog_title">Appearance</string>
+    <string name="tool_rotate">Rotate</string>
+    <string name="panel_rotate_title">Rotate</string>
+    <string name="panel_rotate_hint">Drag to rotate freely. Snaps to 0° / 90° / 180° / 270° with a haptic tick.</string>
+    <string name="panel_reset_title">Reset all</string>
+    <string name="panel_reset_hint">Return to the original picture: ratio, position, zoom, rotation, mirror, background, frame and text.</string>
+    <string name="action_reset_all">Reset to original</string>
+    <string name="reset_done">Picture restored to original</string>
+    <string name="bubble_failed">Could not create the bubble. Check "Display over other apps" permission and try again.</string>
+    <string name="rotation_format">%1$d°</string>
 </resources>

@@ -181,10 +181,6 @@ class EditorViewModel : ViewModel() {
 
     fun setScaleMode(mode: ScaleMode) = mutate { it.copy(scaleMode = mode) }
 
-    fun rotateBy(deg: Float) = mutate {
-        it.copy(transform = it.transform.copy(rotation = it.transform.rotation + deg))
-    }
-
     fun flipHorizontal() = mutate {
         it.copy(transform = it.transform.copy(flipH = !it.transform.flipH))
     }
@@ -192,6 +188,33 @@ class EditorViewModel : ViewModel() {
     fun flipVertical() = mutate {
         it.copy(transform = it.transform.copy(flipV = !it.transform.flipV))
     }
+
+    /** Live rotation while the slider moves — no history entry per pixel. */
+    fun previewRotation(deg: Float) {
+        _ui.update {
+            it.copy(
+                state = it.state.copy(transform = it.state.transform.copy(rotation = deg)),
+                dirty = true,
+            )
+        }
+    }
+
+    /** Slider released: one undo step. */
+    fun commitRotation(deg: Float) {
+        pushHistory()
+        _ui.update {
+            it.copy(
+                state = it.state.copy(transform = it.state.transform.copy(rotation = deg)),
+                canUndo = true,
+                canRedo = false,
+                dirty = true,
+            )
+        }
+        committed = _ui.value.state
+    }
+
+    /** "Reset ke asli": back to a pristine EditorState (undo puts the edits back). */
+    fun resetAll() = mutate { EditorState() }
 
     fun setPadding(dp: Float) = mutate { it.copy(paddingDp = dp) }
 
@@ -250,6 +273,11 @@ class EditorViewModel : ViewModel() {
     }
 
     fun bubbleThumb(): Bitmap? = source?.let { EditorRenderer.bubbleThumb(it) }
+
+    /** Records a source file that was created outside the loader (bubble session). */
+    fun attachSourceFile(file: java.io.File) {
+        sourceFile = file
+    }
 
     fun reportSaved() = _ui.update { it.copy(savedTick = it.savedTick + 1) }
 

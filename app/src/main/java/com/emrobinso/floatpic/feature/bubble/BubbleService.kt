@@ -13,9 +13,11 @@ import android.graphics.PixelFormat
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -100,7 +102,16 @@ class BubbleService : Service() {
                 addAction(Intent.ACTION_SCREEN_ON)
             },
         )
-        startForegroundWithNotification()
+        // A rejected FGS notification (Android 13+ blocked notifications, OEM policy) used
+        // to throw here and the service died before the bubble could ever be added.
+        runCatching { startForegroundWithNotification() }
+            .onFailure { stopSelfSafely() }
+    }
+
+    /** Stops the service without letting a second foreground/FGS exception escape. */
+    private fun stopSelfSafely() {
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+        runCatching { stopSelf() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -117,7 +128,18 @@ class BubbleService : Service() {
         }
         intent?.getStringExtra(EXTRA_SESSION)?.let { sessionId = it }
         intent?.getStringExtra(EXTRA_THUMB_URI)?.let { loadThumb(Uri.parse(it)) }
-        showBubble()
+        if (!Settings.canDrawOverlays(this)) {
+            // permission was revoked while the app was alive
+            Toast.makeText(this, R.string.bubble_permission_denied, Toast.LENGTH_LONG).show()
+            stopSelfSafely()
+            return START_NOT_STICKY
+        }
+        val added = runCatching { showBubble() }.isSuccess
+        if (!added) {
+            Toast.makeText(this, R.string.bubble_failed, Toast.LENGTH_LONG).show()
+            stopSelfSafely()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 
@@ -198,7 +220,8 @@ class BubbleService : Service() {
             setContent { BubbleContentRoot() }
         }
         view = compose
-        runCatching { windowManager.addView(compose, p) }.onFailure { stopSelf() }
+        // let the caller decide what to do when the overlay manager rejects the view
+        windowManager.addView(compose, p)
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

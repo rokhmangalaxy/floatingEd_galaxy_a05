@@ -81,6 +81,21 @@ object Exporter {
         }
     }
 
+    /**
+     * Guarantees a local file for a session. The launcher sample (and some share paths) has
+     * no cache copy, which used to make "minimize to bubble" fail with save_failed.
+     */
+    fun ensureSourceFile(context: Context, bitmap: Bitmap, existing: File?): File? {
+        val current = existing?.takeIf { it.exists() && it.length() > 0L }
+        if (current != null) return current
+        return runCatching {
+            val dir = File(context.filesDir, "sources").apply { mkdirs() }
+            val out = File(dir, "src_${stamp()}.jpg")
+            FileOutputStream(out).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+            out.takeIf { it.exists() && it.length() > 0L }
+        }.getOrNull()
+    }
+
     fun copyToPrivateStorage(context: Context, uri: Uri, name: String = "source"): File {
         val dir = File(context.cacheDir, "session").apply { mkdirs() }
         val out = File(dir, "$name.bin")

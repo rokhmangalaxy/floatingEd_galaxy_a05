@@ -356,4 +356,38 @@ object FloatIcons {
             line(3.5f, 14.8f, 20.5f, 14.8f, s, c, 1.2f)
         }
     }
+
+    /** Circular arrow with a degree tick — the dedicated rotate tool. */
+    @Composable
+    fun RotateTool(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(22.dp)) {
+            val s = size.minDimension / VIEW
+            drawCircle(color = c, radius = 7.2f * s, center = Offset(12f * s, 12f * s),
+                style = Stroke(width = 1.8f * s))
+            drawLine(c, Offset(12f * s, 4.8f * s), Offset(12f * s, 8.4f * s),
+                strokeWidth = 2f * s, cap = StrokeCap.Round)
+            drawCircle(color = c, radius = 1.5f * s, center = Offset(12f * s, 12f * s))
+        }
+    }
+
+    /** Circular arrow snapping back to its start — "reset to original". */
+    @Composable
+    fun ResetAll(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(22.dp)) {
+            val s = size.minDimension / VIEW
+            drawArc(
+                color = c, startAngle = 300f, sweepAngle = 300f, useCenter = false,
+                topLeft = Offset(4.5f * s, 4.5f * s), size = Size(15f * s, 15f * s),
+                style = Stroke(width = 2f * s, cap = StrokeCap.Round),
+            )
+            // arrow head at the open end
+            line(4.4f, 8.2f, 5.6f, 3.8f, s, c, 2f)
+            line(4.4f, 8.2f, 8.8f, 7.2f, s, c, 2f)
+            // a small "original" tick in the middle
+            line(9.5f, 12.5f, 11.5f, 14.6f, s, c, 1.8f)
+            line(11.5f, 14.6f, 15.2f, 9.6f, s, c, 1.8f)
+        }
+    }
 }

@@ -86,4 +86,13 @@
     <string name="theme_neu">Neumorfisme</string>
     <string name="theme_maroon">Pastel Maroon</string>
     <string name="theme_dialog_title">Tema tampilan</string>
+    <string name="tool_rotate">Putar</string>
+    <string name="panel_rotate_title">Putar</string>
+    <string name="panel_rotate_hint">Seret untuk memutar bebas. Menempel otomatis ke 0° / 90° / 180° / 270° dengan getar.</string>
+    <string name="panel_reset_title">Reset semua</string>
+    <string name="panel_reset_hint">Kembalikan gambar ke kondisi asli: rasio, posisi, zoom, putar, cermin, latar, bingkai, dan teks.</string>
+    <string name="action_reset_all">Reset ke asli</string>
+    <string name="reset_done">Gambar dikembalikan ke asli</string>
+    <string name="bubble_failed">Bubble tidak bisa dibuat. Cek izin "Tampil di atas aplikasi lain" lalu coba lagi.</string>
+    <string name="rotation_format">%1$d°</string>
 </resources>

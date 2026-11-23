@@ -20,18 +20,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -84,7 +80,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT, MIRROR, RATIO, HISTORY }
+enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT, MIRROR, ROTATE, RATIO, HISTORY, RESET }
 
 /** Label shown on the ratio chip. */
 fun AspectPreset.chipLabel(): String = when (this) {
@@ -148,7 +144,9 @@ fun EditorScreen(
     onBackground: (BackgroundSpec) -> Unit,
     onAmbient: () -> Unit,
     onScaleMode: (ScaleMode) -> Unit,
-    onRotate: (Float) -> Unit,
+    onRotatePreview: (Float) -> Unit,
+    onRotateCommit: (Float) -> Unit,
+    onResetAll: () -> Unit,
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
     onText: (String) -> Unit,
@@ -183,7 +181,9 @@ fun EditorScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                // No statusBarsPadding / nav-bar spacer here: the card floats mid-screen
+                // and never touches the system bars, so those insets were pure empty space
+                // (the "boros space" bands above the top bar and under the buttons).
                 .imePadding(),
         ) {
             TopBar(
@@ -195,6 +195,7 @@ fun EditorScreen(
                 onUndo = onUndo,
                 onRedo = onRedo,
                 onThemeToggle = onThemeToggle,
+                onResetAll = onResetAll,
                 onMinimize = onMinimize,
             )
 
@@ -283,7 +284,9 @@ fun EditorScreen(
                             onBackground = onBackground,
                             onAmbient = onAmbient,
                             onScaleMode = onScaleMode,
-                            onRotate = onRotate,
+                            onRotatePreview = onRotatePreview,
+                            onRotateCommit = onRotateCommit,
+                            onResetAll = onResetAll,
                             onFlipH = onFlipH,
                             onFlipV = onFlipV,
                             onText = onText,
@@ -306,11 +309,6 @@ fun EditorScreen(
             )
 
             ActionBar(onSave = onSave, onShare = onShare)
-            Spacer(
-                Modifier.height(
-                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() * 0.6f,
-                ),
-            )
         }
     }
 }
@@ -325,6 +323,7 @@ private fun TopBar(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onThemeToggle: () -> Unit,
+    onResetAll: () -> Unit,
     onMinimize: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -354,6 +353,9 @@ private fun TopBar(
         }
         RoundIconButton(enabled = canRedo, onClick = onRedo) {
             FloatIcons.Redo(tint = if (canRedo) scheme.onSurface else scheme.onSurface.copy(.28f))
+        }
+        RoundIconButton(onClick = onResetAll) {
+            FloatIcons.ResetAll(tint = scheme.onSurface)
         }
         RoundIconButton(onClick = onThemeToggle) {
             if (dark) FloatIcons.Sun(tint = scheme.onSurface)
@@ -420,7 +422,7 @@ private fun ToolRow(active: Tool, onTool: (Tool) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 3.dp),
+            .padding(horizontal = 2.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -436,8 +438,12 @@ private fun ToolRow(active: Tool, onTool: (Tool) -> Unit) {
             { FloatIcons.TextIcon(tint = ic(Tool.TEXT)) }) { onTool(Tool.TEXT) }
         toolItem(ctx.getString(R.string.tool_mirror), active == Tool.MIRROR,
             { FloatIcons.MirrorH(tint = ic(Tool.MIRROR)) }) { onTool(Tool.MIRROR) }
+        toolItem(ctx.getString(R.string.tool_rotate), active == Tool.ROTATE,
+            { FloatIcons.RotateTool(tint = ic(Tool.ROTATE)) }) { onTool(Tool.ROTATE) }
         toolItem(ctx.getString(R.string.history_short), active == Tool.HISTORY,
             { FloatIcons.History(tint = ic(Tool.HISTORY)) }) { onTool(Tool.HISTORY) }
+        toolItem(ctx.getString(R.string.action_reset_all), active == Tool.RESET,
+            { FloatIcons.ResetAll(tint = ic(Tool.RESET)) }) { onTool(Tool.RESET) }
     }
 }
 
@@ -452,8 +458,8 @@ private fun RowScope.toolItem(
     val scheme = MaterialTheme.colorScheme
     Box(
         Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .size(36.dp)
+            .clip(RoundedCornerShape(11.dp))
             .background(if (active) scheme.primary else Color.Transparent)
             .semantics { contentDescription = label }
             .clickable(onClick = onClick),
@@ -693,7 +699,9 @@ private fun OverlayPanel(
     onBackground: (BackgroundSpec) -> Unit,
     onAmbient: () -> Unit,
     onScaleMode: (ScaleMode) -> Unit,
-    onRotate: (Float) -> Unit,
+    onRotatePreview: (Float) -> Unit,
+    onRotateCommit: (Float) -> Unit,
+    onResetAll: () -> Unit,
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
     onText: (String) -> Unit,
@@ -829,23 +837,28 @@ private fun OverlayPanel(
                         onClick = onFlipV,
                         modifier = Modifier.weight(1f),
                     )
-                    MirrorTile(
-                        label = ctx.getString(R.string.rotate_left),
-                        active = false,
-                        icon = { FloatIcons.Rotate(tint = scheme.primary, modifier = Modifier.size(22.dp)) },
-                        onClick = { onRotate(-90f) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    MirrorTile(
-                        label = ctx.getString(R.string.rotate_right),
-                        active = false,
-                        icon = { FloatIcons.Rotate(tint = scheme.primary, modifier = Modifier.size(22.dp)) },
-                        onClick = { onRotate(90f) },
-                        modifier = Modifier.weight(1f),
-                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 Hint(ctx.getString(R.string.panel_mirror_hint))
+            }
+
+            Tool.ROTATE -> RotatePanel(
+                rotation = state.transform.rotation,
+                onPreview = onRotatePreview,
+                onCommit = onRotateCommit,
+            )
+
+            Tool.RESET -> {
+                SectionTitle(ctx.getString(R.string.panel_reset_title))
+                Spacer(Modifier.height(4.dp))
+                Hint(ctx.getString(R.string.panel_reset_hint))
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PrimaryPill(ctx.getString(R.string.action_reset_all), onResetAll) {
+                        FloatIcons.ResetAll(tint = scheme.onPrimary, modifier = Modifier.size(15.dp))
+                    }
+                    PillToggle("Grid", guidesOn, onGuides)
+                }
             }
 
             Tool.RATIO -> {
@@ -1021,6 +1034,127 @@ private fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRan
             onValueChange = onChange,
             valueRange = range,
             modifier = Modifier.height(26.dp),
+        )
+    }
+}
+
+/**
+ * Rotation is its own tool: the pinch gesture no longer rotates (a two finger zoom always
+ * carries a little twist, which made the picture spin while zooming).
+ *
+ * The slider range is user configurable — min, max and step are editable, so the tool works
+ * for "±15° fine correction" as well as for "full 0..360° sweep".
+ */
+@Composable
+private fun RotatePanel(
+    rotation: Float,
+    onPreview: (Float) -> Unit,
+    onCommit: (Float) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
+
+    // range config lives with the panel; defaults cover a full turn in 1° steps
+    var min by remember { mutableStateOf("-180") }
+    var max by remember { mutableStateOf("180") }
+    var step by remember { mutableStateOf("1") }
+    var snap by remember { mutableStateOf(true) }
+    // last value pushed by the slider (the `rotation` parameter is stale mid-drag)
+    var lastValue by remember { mutableStateOf(rotation) }
+
+    val minV = min.toFloatOrNull() ?: -180f
+    val maxV = max.toFloatOrNull() ?: 180f
+    val safeMin = minOf(minV, maxV)
+    val safeMax = maxOf(minV, maxV)
+    val stepV = (step.toFloatOrNull() ?: 1f).coerceIn(0.1f, 90f)
+
+    fun quantise(value: Float): Float {
+        val clamped = value.coerceIn(safeMin, safeMax)
+        return if (snap) (kotlin.math.round(clamped / stepV) * stepV).coerceIn(safeMin, safeMax)
+        else clamped
+    }
+
+    LaunchedEffect(rotation) { lastValue = rotation }
+
+    SectionTitle(ctx.getString(R.string.panel_rotate_title))
+    Spacer(Modifier.height(4.dp))
+
+    // current value + quick presets
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = ctx.getString(R.string.rotation_format, rotation.toInt()),
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = scheme.primary,
+        )
+        Spacer(Modifier.width(10.dp))
+        PillToggle("0°", kotlin.math.abs(rotation) < 0.5f) { onCommit(0f) }
+        Spacer(Modifier.width(6.dp))
+        PillToggle("90°", kotlin.math.abs(rotation - 90f) < 0.5f) { onCommit(90f) }
+        Spacer(Modifier.width(6.dp))
+        PillToggle("180°", kotlin.math.abs(rotation - 180f) < 0.5f) { onCommit(180f) }
+        Spacer(Modifier.width(6.dp))
+        PillToggle("270°", kotlin.math.abs(rotation - 270f) < 0.5f) { onCommit(270f) }
+    }
+
+    // Slider() throws when valueRange is empty, so never let min meet max.
+    val rangeEnd = if (safeMax > safeMin) safeMax else safeMin + 1f
+    // steps = number of detents BETWEEN the ends (0 = continuous). Too many would be
+    // expensive to draw, so cap it.
+    val detents = if (!snap) 0 else (((rangeEnd - safeMin) / stepV) - 1f).toInt().coerceIn(0, 60)
+
+    Slider(
+        value = rotation.coerceIn(safeMin, rangeEnd),
+        onValueChange = {
+            lastValue = quantise(it)
+            onPreview(lastValue)
+        },
+        // commit what the caller actually holds: `rotation` is a parameter and does not
+        // update during the drag, so reading it here would snap back to the start angle.
+        onValueChangeFinished = { onCommit(quantise(lastValue)) },
+        valueRange = safeMin..rangeEnd,
+        steps = detents,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(30.dp),
+    )
+
+    // custom range: min / max / step
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        RangeField("min", min) { min = it }
+        RangeField("max", max) { max = it }
+        RangeField("step", step) { step = it }
+        PillToggle("Snap", snap) { snap = !snap }
+    }
+    Spacer(Modifier.height(4.dp))
+    Hint(ctx.getString(R.string.panel_rotate_hint))
+}
+
+/** Small numeric input used by the rotate range editor. */
+@Composable
+private fun RangeField(label: String, value: String, onChange: (String) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .height(30.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(scheme.surfaceVariant.copy(.55f))
+            .border(1.dp, scheme.outline.copy(.35f), RoundedCornerShape(9.dp))
+            .padding(horizontal = 7.dp),
+    ) {
+        Text(label, fontSize = 9.sp, color = scheme.onSurfaceVariant)
+        Spacer(Modifier.width(4.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = { raw -> onChange(raw.filter { it.isDigit() || it == '-' || it == '.' }.take(6)) },
+            singleLine = true,
+            textStyle = TextStyle(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = scheme.onSurface,
+            ),
+            modifier = Modifier.width(34.dp),
         )
     }
 }

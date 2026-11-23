@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.calculatePan
-import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -36,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import com.emrobinso.floatpic.core.model.EditorState
 import com.emrobinso.floatpic.core.model.Transform
 import com.emrobinso.floatpic.core.render.EditorRenderer
-import com.emrobinso.floatpic.core.render.TextPainter
 import com.emrobinso.floatpic.ui.Haptics
 import kotlin.math.abs
 import kotlin.math.max
@@ -120,7 +118,6 @@ fun EditorViewport(
                     awaitEachGesture {
                         val start = stateRef.transform
                         var accScale = 1f
-                        var accRot = 0f
                         var accPan = Offset.Zero
                         var moved = false
                         var limitNotified = false
@@ -131,14 +128,15 @@ fun EditorViewport(
                             if (event.changes.none { it.pressed }) break
 
                             val zoom = event.calculateZoom()
-                            val rot = event.calculateRotation()
                             val pan = event.calculatePan()
-                            val isGesture = zoom != 1f || rot != 0f ||
+                            // rotation is deliberately ignored here (it comes from the
+                            // dedicated Rotate tool): any slight twist while pinching used
+                            // to rotate the picture.
+                            val isGesture = zoom != 1f ||
                                 abs(pan.x) + abs(pan.y) > 0.01f
                             if (isGesture) {
                                 moved = true
                                 accScale = (accScale * zoom).coerceIn(0.05f, 40f)
-                                accRot += rot
                                 accPan += pan
 
                                 val factor = REF_W / viewportWidth
@@ -146,7 +144,6 @@ fun EditorViewport(
                                 val clampedScale = desiredScale.coerceIn(1f, 10f)
                                 val candidate = start.copy(
                                     scale = clampedScale,
-                                    rotation = start.rotation + accRot,
                                     offsetX = start.offsetX + accPan.x * factor,
                                     offsetY = start.offsetY + accPan.y * factor,
                                 )
@@ -164,12 +161,7 @@ fun EditorViewport(
                             }
                         }
 
-                        if (moved) {
-                            val latest = stateRef.transform
-                            val snapped = TextPainter.snapRotation(latest.rotation)
-                            if (abs(snapped - latest.rotation) > 0.01f) hapticsRef.snap()
-                            commitRef(clampOffset(latest.copy(rotation = snapped)))
-                        }
+                        if (moved) commitRef(clampOffset(stateRef.transform))
                     }
                 }
                 .pointerInput(Unit) {

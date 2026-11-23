@@ -158,6 +158,7 @@ class EditorActivity : ComponentActivity() {
             var history by remember { mutableStateOf<List<com.emrobinso.floatpic.data.HistoryEntry>>(emptyList()) }
             val enter by animateFloatAsState(1f, tween(220), label = "enter")
             val ctx = LocalContext.current
+            val haptics = rememberHaptics()
 
             suspend fun refreshHistory() {
                 history = HistoryStore.list(ctx)
@@ -208,7 +209,7 @@ class EditorActivity : ComponentActivity() {
                             canRedo = ui.canRedo,
                             history = history,
                             thumbPath = { entry -> HistoryStore.filesOf(ctx, entry).thumb.absolutePath },
-                            haptics = rememberHaptics(),
+                            haptics = haptics,
                             modifier = Modifier.fillMaxSize(),
                             // closing the card is also a save point: write the session
                             // first (non-cancellable), then leave — otherwise the row you
@@ -269,7 +270,13 @@ class EditorActivity : ComponentActivity() {
                             onBackground = vm::setBackground,
                             onAmbient = vm::useAmbientBackground,
                             onScaleMode = vm::setScaleMode,
-                            onRotate = vm::rotateBy,
+                            onRotatePreview = vm::previewRotation,
+                            onRotateCommit = vm::commitRotation,
+                            onResetAll = {
+                                vm.resetAll()
+                                haptics.tick()
+                                Toast.makeText(this@EditorActivity, R.string.reset_done, Toast.LENGTH_SHORT).show()
+                            },
                             onFlipH = vm::flipHorizontal,
                             onFlipV = vm::flipVertical,
                             onText = vm::setText,
@@ -412,8 +419,12 @@ class EditorActivity : ComponentActivity() {
             val sessionId = "session_${System.currentTimeMillis()}"
             val thumb = vm.bubbleThumb()
             val thumbUri = thumb?.let { runCatching { Exporter.writeThumb(this@EditorActivity, it) }.getOrNull() }
-            val source = vm.sourceFile?.absolutePath
-            if (source != null) {
+            // The launcher sample never had a cache copy, so minimizing used to fail with
+            // "gagal menyimpan gambar" and no bubble ever appeared. Materialize one.
+            val file = Exporter.ensureSourceFile(this@EditorActivity, bmp, vm.sourceFile)
+            if (file != null) {
+                vm.attachSourceFile(file)
+                val source = file.absolutePath
                 DraftStore.save(
                     this@EditorActivity,
                     sessionId,
