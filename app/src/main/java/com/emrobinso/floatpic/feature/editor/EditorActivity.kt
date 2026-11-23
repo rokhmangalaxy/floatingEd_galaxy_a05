@@ -68,7 +68,9 @@ import com.emrobinso.floatpic.ui.rememberHaptics
 import com.emrobinso.floatpic.ui.theme.AppTheme
 import com.emrobinso.floatpic.ui.theme.FloatPicTheme
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -208,7 +210,19 @@ class EditorActivity : ComponentActivity() {
                             thumbPath = { entry -> HistoryStore.filesOf(ctx, entry).thumb.absolutePath },
                             haptics = rememberHaptics(),
                             modifier = Modifier.fillMaxSize(),
-                            onClose = { finish() },
+                            // closing the card is also a save point: write the session
+                            // first (non-cancellable), then leave — otherwise the row you
+                            // just edited disappears from history
+                            onClose = {
+                                if (vm.isDirty()) {
+                                    lifecycleScope.launch {
+                                        withContext(NonCancellable) { autosave(force = true) }
+                                        finish()
+                                    }
+                                } else {
+                                    finish()
+                                }
+                            },
                             onMinimize = { showMinimizePrompt = true },
                             onDeleteHistory = { entry ->
                                 scope.launch {
@@ -300,7 +314,7 @@ class EditorActivity : ComponentActivity() {
         super.onStop()
         // last-chance autosave: covers "user just closed the card / swiped away"
         if (vm.isDirty()) {
-            lifecycleScope.launch { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { autosave(force = true) } }
+            lifecycleScope.launch { withContext(NonCancellable) { autosave(force = true) } }
         }
     }
 
@@ -422,11 +436,11 @@ class EditorActivity : ComponentActivity() {
      * Writes the current session into the history. Re-uses [currentSessionId] so the list
      * shows one row per picture, not one row per save.
      */
-    private suspend fun autosave(force: Boolean = false): HistoryEntry? {
-        val bmp = vm.source ?: return null
-        if (!force && !vm.isDirty()) return null
+    private suspend fun autosave(force: Boolean = false): HistoryEntry? = withContext(NonCancellable) {
+        val bmp = vm.source ?: return@withContext null
+        if (!force && !vm.isDirty()) return@withContext null
         val entry = HistoryStore.record(
-            context = this,
+            context = this@EditorActivity,
             bitmap = bmp,
             state = vm.currentState(),
             theme = sessionTheme,
@@ -437,7 +451,7 @@ class EditorActivity : ComponentActivity() {
             currentSessionId = entry.id
             vm.markSaved()
         }
-        return entry
+        entry
     }
 
     private suspend fun recordHistory() {
