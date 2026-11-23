@@ -226,7 +226,9 @@ class EditorActivity : ComponentActivity() {
                                         // suspend: finishes only after the new source is in,
                                         // otherwise loadImage() resets the editor to defaults
                                         // right after we restored it.
-                                        vm.openAndRestore(file, snapshot)
+                                        vm.openAndRestore(snapshot) {
+                                            ImageLoader.loadFile(this@EditorActivity, file)
+                                        }
                                         // reopening an entry keeps writing to the same row
                                         currentSessionId = entry.id
                                     }
@@ -354,7 +356,7 @@ class EditorActivity : ComponentActivity() {
             currentSessionId = snapshot.historyId
             val file = snapshot.sourceUri?.let { File(it) }
             if (file != null && file.exists()) {
-                vm.openAndRestore(file, snapshot)
+                vm.openAndRestore(snapshot) { ImageLoader.loadFile(this@EditorActivity, file) }
             } else {
                 vm.restore(snapshot)
             }

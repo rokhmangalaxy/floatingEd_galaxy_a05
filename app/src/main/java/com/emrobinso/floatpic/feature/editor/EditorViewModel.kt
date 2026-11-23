@@ -88,9 +88,12 @@ class EditorViewModel : ViewModel() {
                 }
     }
 
-    /** Opens a history session: load the source first, then re-apply the saved edits. */
-    suspend fun openAndRestore(file: java.io.File, snapshot: DraftSnapshot) {
-        loadImageNow { com.emrobinso.floatpic.core.image.ImageLoader.loadFile(file) }
+    /**
+     * Opens a history session: load the source first, then re-apply the saved edits.
+     * The loader is passed in because decoding needs a Context (the ViewModel has none).
+     */
+    suspend fun openAndRestore(snapshot: DraftSnapshot, loader: suspend () -> LoadedImage) {
+        loadImageNow(loader)
         restore(snapshot)
     }
 
