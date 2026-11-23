@@ -1,62 +1,54 @@
-# 11 — Open Questions & Next Actions
+# 11 — Keputusan Terkunci & Pertanyaan Tersisa
 
-Semua pertanyaan dari dokumen lain dikumpulkan di sini. Isi jawabanmu (atau bilang "rekomendasi saja") dan saya lanjut ke langkah berikutnya.
+## ✅ Sudah diputuskan
 
-## Blok keputusan
+| # | Keputusan | Nilai |
+|---|---|---|
+| 1 | Level floating | **L1** — kartu melayang di activity transparan + skrim (arsitektur siap L2) |
+| 2 | Ciri khas | **Floating bubble**: minimize → bubble di tepi layar; long-press 1.6 s → getar → close app |
+| 3 | Teks | Satu lapis, **atas-tengah / bawah-tengah**, **putih+stroke hitam** / **hitam+stroke putih** |
+| 4 | Aksi utama | Simpan, Share, Minimize (bubble), Close (dari bubble) |
+| 5 | Tema | **Neumorphism** & **Pastel Maroon 500% saturasi**, bisa di-toggle |
 
-### 1. Identitas (doc 01)
+Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bubble), dan 14 (tema).
+
+## ⚠️ Satu ketegangan yang perlu disadari
+
+"Bubble" secara teknis butuh **L2** (overlay window + izin `SYSTEM_ALERT_WINDOW`), sedangkan editor tetap L1. Ini sudah diselesaikan dengan arsitektur di doc 13: **editor = Activity, bubble = launcher**. Jadi tidak perlu menulis editor di dalam overlay. Rekomendasi urutan: core editor dulu → bubble di v1.1 (2–4 hari).
+
+## ❓ Pertanyaan tersisa (jawab saat mau mulai kode)
+
+### Identitas
 - [ ] Nama final: `FloatPic` / `Floaty` / `Tumpuk` / lain?
-- [ ] Tagline: "Editor mengambang" / "Edit tanpa keluar app" / lain?
-- [ ] Deep link scheme: `floatpic://`?
-- [ ] `minSdk`: 26 (rekomendasi) atau 24?
+- [ ] `minSdk` 26 (rekomendasi) atau 24?
+- [ ] Bahasa: id + en (rekomendasi) atau id saja?
 
-### 2. Positioning (doc 02)
-- [ ] Level floating: **L1** (rekomendasi) / L2 / L0?
-- [ ] Pasar: Indonesia dulu, atau global dari awal?
-- [ ] Format export default: JPEG 92 (rekomendasi) / PNG / WebP?
+### Editor
+- [ ] Crop default non-destructive (rekomendasi) atau potong isi?
+- [ ] "Pinch out" = zoom (rekomendasi) atau drag-keluar?
+- [ ] Resolusi export: 1080 standar (rekomendasi) / pilihan HD / ikut asli?
+- [ ] Background transparan (export PNG) perlu?
+- [ ] Font teks: Roboto Black saja (rekomendasi) atau + 1 display font (Anton)?
 
-### 3. Kanvas (doc 04)
-- [ ] Crop default: non-destructive (rekomendasi) atau potong isi?
-- [ ] Rasio bebas ("Free") di MVP?
-- [ ] Resolusi export: standar 1080 / pilihan HD / ikut asli?
+### Bubble
+- [ ] Bubble masuk **v1** (langsung, effort naik) atau **v1.1** (rekomendasi)?
+- [ ] Close: hold **1.6 s + ring** (rekomendasi) atau 600 ms saja?
+- [ ] Setelah close: hapus sesi (rekomendasi, privasi) atau simpan Riwayat?
 
-### 4. Background (doc 05)
-- [ ] Background transparan perlu?
-- [ ] Prioritas Tier 3: ambient color / wallpaper mode / brand kit / duotone?
+### Tema
+- [ ] Default: Neumorphism (rekomendasi) atau Pastel Maroon?
+- [ ] Dua tema langsung di v1, atau satu dulu? (rekomendasi: dua, token disiapkan sekarang)
 
-### 5. Rasio & preset (doc 06)
-- [ ] Chip tampil 5 atau 7 sebelum scroll?
-- [ ] Custom ratio di MVP?
-- [ ] Preset sekarang atau nanti? (rekomendasi: nanti, data disiapkan)
-
-### 6. Gesture (doc 07)
-- [ ] "Pinch out": zoom (rekomendasi) atau drag-keluar?
-- [ ] Inersia pan: ya/tidak?
-- [ ] Rotate bebas + snap (rekomendasi) atau 90° saja?
-
-### 7. Fitur tambahan (doc 08)
-- [ ] Ciri khas Kategori B: floating bubble / batch edit / context-aware preset?
-- [ ] Batch edit untuk jualan online — target nyata?
-- [ ] Pro plan isi apa?
-
-### 8. UX (doc 09)
-- [ ] CTA: Share primary + Simpan secondary (rekomendasi)?
-- [ ] Bahasa: id + en (rekomendasi)?
-- [ ] Editor selalu dark (rekomendasi)?
-
-### 9. Teknis (doc 10)
+### Teknis
 - [ ] Compose murni (rekomendasi)?
-- [ ] 3 modul (rekomendasi) vs single module?
-- [ ] DI manual (rekomendasi) vs Hilt?
+- [ ] 3 modul (`app`, `core`, `feature:editor`) — rekomendasi?
+- [ ] DI manual dulu (rekomendasi) vs Hilt?
 
-## Next actions (setelah jawaban)
+## Next actions
 
-1. Saya susun **`README` produk** (positioning final + feature list v1).
-2. Saya tulis **spesifikasi layar** (wireframe ASCII/figma-light) per dokumen 09.
-3. Saya setup **skeleton project** (Gradle, modul, Compose, manifest share target) — di branch ini.
-4. Setelah skeleton jalan, saya bangun **renderer + editor viewport** dulu (bagian paling menentukan), baru tool.
-
-## Catatan
-
-- Semua keputusan di atas **bisa diubah nanti**, kecuali: `applicationId`, nama app di Play Store, dan `minSdk` (makin sulit diubah setelah publikasi). Utamakan tiga itu.
-- Jangan menulis UI editor sebelum renderer preview/export sepakat dengan model `EditorState` — itu investasi yang paling sering diabaikan dan paling mahal untuk diperbaiki.
+1. Kunci jawaban di atas (bisa bilang "pakai rekomendasi semua").
+2. Saya setup skeleton project (Gradle, Compose, manifest share target).
+3. Bangun `EditorState` + renderer preview=export (inti).
+4. Layar editor L1: viewport, rasio, crop/align, background, teks.
+5. Bubble service: izin, drag+snap, hold-to-close, restore.
+6. Tema: token Neumorphism & Maroon + toggle.
