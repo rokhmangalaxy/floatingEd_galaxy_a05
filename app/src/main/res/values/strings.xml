@@ -45,7 +45,7 @@
     <string name="history_delete">Hapus dari riwayat</string>
     <string name="empty_title">Belum ada gambar</string>
     <string name="empty_body">Bagikan gambar ke FloatPic dari aplikasi mana pun, atau pilih dari galeri.</string>
-    <string name="panel_rotate_title">Putar &amp; cermin</string>
+    <string name="panel_rotate_title">Putar</string>
 
     <string name="label_fill">Penuh</string>
     <string name="label_fit">Utuh</string>
@@ -86,8 +86,6 @@
     <string name="theme_neu">Neumorfisme</string>
     <string name="theme_maroon">Pastel Maroon</string>
     <string name="theme_dialog_title">Tema tampilan</string>
-    <string name="tool_rotate">Putar</string>
-    <string name="panel_rotate_title">Putar</string>
     <string name="panel_rotate_hint">Seret untuk memutar bebas. Menempel otomatis ke 0° / 90° / 180° / 270° dengan getar.</string>
     <string name="panel_reset_title">Reset semua</string>
     <string name="panel_reset_hint">Kembalikan gambar ke kondisi asli: rasio, posisi, zoom, putar, cermin, latar, bingkai, dan teks.</string>

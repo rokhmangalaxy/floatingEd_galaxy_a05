@@ -45,7 +45,7 @@
     <string name="history_delete">Remove from history</string>
     <string name="empty_title">No image yet</string>
     <string name="empty_body">Share an image to FloatPic from any app, or pick one from your gallery.</string>
-    <string name="panel_rotate_title">Rotate &amp; mirror</string>
+    <string name="panel_rotate_title">Rotate</string>
 
     <string name="label_fill">Fill</string>
     <string name="label_fit">Fit</string>
@@ -86,8 +86,6 @@
     <string name="theme_neu">Neumorphism</string>
     <string name="theme_maroon">Pastel Maroon</string>
     <string name="theme_dialog_title">Appearance</string>
-    <string name="tool_rotate">Rotate</string>
-    <string name="panel_rotate_title">Rotate</string>
     <string name="panel_rotate_hint">Drag to rotate freely. Snaps to 0° / 90° / 180° / 270° with a haptic tick.</string>
     <string name="panel_reset_title">Reset all</string>
     <string name="panel_reset_hint">Return to the original picture: ratio, position, zoom, rotation, mirror, background, frame and text.</string>
