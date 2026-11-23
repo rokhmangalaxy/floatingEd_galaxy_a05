@@ -29,6 +29,8 @@ data class UiState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val savedTick: Int = 0,
+    /** true once the user changed anything since the last history record */
+    val dirty: Boolean = false,
 )
 
 class EditorViewModel : ViewModel() {
@@ -50,9 +52,16 @@ class EditorViewModel : ViewModel() {
     private var committed: EditorState = EditorState()
 
     fun loadImage(loader: suspend () -> LoadedImage) {
-        viewModelScope.launch {
-            _ui.update { it.copy(loading = true, error = null) }
-            runCatching { loader() }
+        viewModelScope.launch { loadImageNow(loader) }
+    }
+
+    /**
+     * Same as [loadImage] but suspends until the bitmap is in place, so a caller can apply a
+     * saved state afterwards without racing the "new image -> default state" reset.
+     */
+    suspend fun loadImageNow(loader: suspend () -> LoadedImage) {
+        _ui.update { it.copy(loading = true, error = null) }
+        runCatching { loader() }
                 .onSuccess { loaded ->
                     source?.recycle()
                     source = loaded.bitmap
@@ -70,15 +79,26 @@ class EditorViewModel : ViewModel() {
                             state = committed,
                             canUndo = false,
                             canRedo = false,
+                            dirty = false,
                         )
                     }
                 }
                 .onFailure { e ->
                     _ui.update { it.copy(loading = false, error = e.message ?: "decode failed") }
                 }
-        }
     }
 
+    /** Opens a history session: load the source first, then re-apply the saved edits. */
+    suspend fun openAndRestore(file: java.io.File, snapshot: DraftSnapshot) {
+        loadImageNow { com.emrobinso.floatpic.core.image.ImageLoader.loadFile(file) }
+        restore(snapshot)
+    }
+
+    /**
+     * Re-applies saved edits. The palette is NOT taken from the snapshot: opening an old
+     * entry used to flip the UI back to the default theme. The theme is an app-wide
+     * preference, restored once in onCreate.
+     */
     fun restore(snapshot: DraftSnapshot) {
         committed = snapshot.state
         undo.clear()
@@ -86,15 +106,20 @@ class EditorViewModel : ViewModel() {
         _ui.update {
             it.copy(
                 state = snapshot.state,
-                theme = snapshot.theme,
                 loading = false,
                 canUndo = false,
                 canRedo = false,
+                dirty = false,
             )
         }
     }
 
     fun setTheme(theme: AppTheme) = _ui.update { it.copy(theme = theme) }
+
+    fun isDirty(): Boolean = _ui.value.dirty
+
+    /** Called after the session was written to [com.emrobinso.floatpic.data.HistoryStore]. */
+    fun markSaved() = _ui.update { it.copy(dirty = false) }
 
     fun currentState(): EditorState = _ui.value.state
 
@@ -102,13 +127,15 @@ class EditorViewModel : ViewModel() {
 
     /** Live transform during a gesture — never touches history. */
     fun previewTransform(t: Transform) {
-        _ui.update { it.copy(state = it.state.copy(transform = t)) }
+        _ui.update { it.copy(state = it.state.copy(transform = t), dirty = true) }
     }
 
     /** Gesture ended: one history entry, independent of frame count. */
     fun commitTransform(t: Transform) {
         pushHistory()
-        _ui.update { it.copy(state = it.state.copy(transform = t), canUndo = true, canRedo = false) }
+        _ui.update {
+            it.copy(state = it.state.copy(transform = t), canUndo = true, canRedo = false, dirty = true)
+        }
         committed = _ui.value.state
     }
 
@@ -120,7 +147,7 @@ class EditorViewModel : ViewModel() {
 
     private fun mutate(block: (EditorState) -> EditorState) {
         pushHistory()
-        _ui.update { it.copy(state = block(it.state), canUndo = true, canRedo = false) }
+        _ui.update { it.copy(state = block(it.state), canUndo = true, canRedo = false, dirty = true) }
         committed = _ui.value.state
     }
 
@@ -128,14 +155,14 @@ class EditorViewModel : ViewModel() {
         val prev = undo.removeLastOrNull() ?: return
         redo.addLast(committed)
         committed = prev
-        _ui.update { it.copy(state = prev, canUndo = undo.isNotEmpty(), canRedo = true) }
+        _ui.update { it.copy(state = prev, canUndo = undo.isNotEmpty(), canRedo = true, dirty = true) }
     }
 
     fun redo() {
         val next = redo.removeLastOrNull() ?: return
         undo.addLast(committed)
         committed = next
-        _ui.update { it.copy(state = next, canUndo = true, canRedo = redo.isNotEmpty()) }
+        _ui.update { it.copy(state = next, canUndo = true, canRedo = redo.isNotEmpty(), dirty = true) }
     }
 
     /**

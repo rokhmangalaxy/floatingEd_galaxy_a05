@@ -159,6 +159,8 @@ fun EditorScreen(
     history: List<com.emrobinso.floatpic.data.HistoryEntry>,
     onOpenHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     onDeleteHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
+    // resolves the on-disk thumbnail for an entry (entries only carry the file name)
+    thumbPath: (com.emrobinso.floatpic.data.HistoryEntry) -> String,
 ) {
     var tool by remember { mutableStateOf(Tool.NONE) }
     var guides by remember { mutableStateOf(false) }
@@ -203,7 +205,7 @@ fun EditorScreen(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -216,7 +218,7 @@ fun EditorScreen(
                     Box(
                         Modifier
                             .size(side)
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(
                                 Brush.verticalGradient(
                                     listOf(
@@ -228,7 +230,7 @@ fun EditorScreen(
                             .border(
                                 1.dp,
                                 MaterialTheme.colorScheme.outline.copy(.30f),
-                                RoundedCornerShape(16.dp),
+                                RoundedCornerShape(12.dp),
                             )
                             .pointerInput(Unit) { detectTapGestures { closePanel() } },
                         contentAlignment = Alignment.Center,
@@ -248,7 +250,7 @@ fun EditorScreen(
                                 // inset so the ratio window never touches the square frame
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(10.dp),
+                                    .padding(6.dp),
                             )
                         }
                     }
@@ -291,6 +293,7 @@ fun EditorScreen(
                             onDone = { tool = Tool.NONE },
                             onOpenHistory = onOpenHistory,
                             onDeleteHistory = onDeleteHistory,
+                            thumbPath = thumbPath,
                         )
                     }
                 }
@@ -554,6 +557,7 @@ private fun HistoryStrip(
     onOpen: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     onDelete: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     bare: Boolean = false,
+    thumbPath: (com.emrobinso.floatpic.data.HistoryEntry) -> String,
 ) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
@@ -576,7 +580,7 @@ private fun HistoryStrip(
                 var thumb by remember(entry.id) { mutableStateOf<Bitmap?>(null) }
                 LaunchedEffect(entry.id) {
                     thumb = withContext(Dispatchers.IO) {
-                        android.graphics.BitmapFactory.decodeFile(entry.thumb)
+                        android.graphics.BitmapFactory.decodeFile(thumbPath(entry))
                     }
                 }
                 Box(
@@ -680,6 +684,7 @@ private fun OverlayPanel(
     onAspect: (AspectPreset) -> Unit,
     onOpenHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     onDeleteHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
+    thumbPath: (com.emrobinso.floatpic.data.HistoryEntry) -> String,
     onReset: () -> Unit,
     onAlign: (Float, Float) -> Unit,
     onPadding: (Float) -> Unit,
@@ -700,7 +705,7 @@ private fun OverlayPanel(
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         color = scheme.surface.copy(alpha = 0.97f),
         shadowElevation = 10.dp,
         modifier = Modifier.fillMaxWidth(),
@@ -874,6 +879,7 @@ private fun OverlayPanel(
                         onOpen = onOpenHistory,
                         onDelete = onDeleteHistory,
                         bare = true,
+                        thumbPath = thumbPath,
                     )
                 }
             }

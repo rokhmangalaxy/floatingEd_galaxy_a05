@@ -41,7 +41,7 @@ data class ExtraTokens(
 )
 
 val LocalExtra = staticCompositionLocalOf {
-    ExtraTokens(Color.Transparent, Color.Transparent, 28, false)
+    ExtraTokens(Color.Transparent, Color.Transparent, 16, false)
 }
 
 private val maroon = Color(0xFF7A0C2E)
@@ -138,13 +138,13 @@ fun FloatPicTheme(theme: AppTheme, dark: Boolean, content: @Composable () -> Uni
         AppTheme.PASTEL_MAROON, AppTheme.MAROON_DARK -> ExtraTokens(
             softShadow = Color(0x1F7A0C2E),
             softLight = Color(0x66FFFFFF),
-            cardRadius = 28,
+            cardRadius = 16,
             raised = false,
         )
         AppTheme.NEUMORPHISM -> ExtraTokens(
             softShadow = if (dark) Color(0xFF171A20) else Color(0xFFC3C8D4),
             softLight = if (dark) Color(0xFF2E333D) else Color(0xFFFFFFFF),
-            cardRadius = 28,
+            cardRadius = 16,
             raised = true,
         )
     }

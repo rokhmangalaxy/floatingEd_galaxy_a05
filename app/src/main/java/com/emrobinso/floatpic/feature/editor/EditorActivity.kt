@@ -61,11 +61,14 @@ import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.core.image.ImageLoader
 import com.emrobinso.floatpic.data.DraftStore
 import com.emrobinso.floatpic.data.Exporter
+import com.emrobinso.floatpic.data.HistoryEntry
 import com.emrobinso.floatpic.data.HistoryStore
 import com.emrobinso.floatpic.feature.bubble.BubbleService
 import com.emrobinso.floatpic.ui.rememberHaptics
+import com.emrobinso.floatpic.ui.theme.AppTheme
 import com.emrobinso.floatpic.ui.theme.FloatPicTheme
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -74,6 +77,15 @@ class EditorActivity : ComponentActivity() {
     private val vm: EditorViewModel by viewModels()
 
     private var pendingMinimize = false
+
+    /**
+     * History row this editor writes to. Autosave re-uses the same id, so one picture never
+     * fills the list with duplicates; it is reset when a NEW source is opened.
+     */
+    private var currentSessionId: String? = null
+
+    /** Most recent theme choice; recorded with the session and kept app-wide. */
+    private var sessionTheme: AppTheme = AppTheme.MAROON_DARK
 
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -130,7 +142,10 @@ class EditorActivity : ComponentActivity() {
         }
 
         val savedTheme = runCatching { DraftStore.theme(this) }.getOrNull()
-        if (savedTheme != null) vm.setTheme(savedTheme)
+        if (savedTheme != null) {
+            sessionTheme = savedTheme
+            vm.setTheme(savedTheme)
+        }
 
         handleIntent(intent)
 
@@ -147,6 +162,17 @@ class EditorActivity : ComponentActivity() {
             }
             LaunchedEffect(ui.savedTick) { refreshHistory() }
             LaunchedEffect(Unit) { refreshHistory() }
+
+            // ---- AUTOSAVE ------------------------------------------------------------
+            // Fires ~1.2 s after the last real edit (not on every gesture frame), and once
+            // more when the editor leaves the foreground. The row is updated in place, so
+            // a single picture never fills the history with duplicates.
+            LaunchedEffect(ui.state, ui.dirty, ui.loading) {
+                if (!ui.dirty || ui.loading || vm.source == null) return@LaunchedEffect
+                delay(1200)
+                val entry = autosave()
+                if (entry != null) refreshHistory()
+            }
 
             FloatPicTheme(theme = ui.theme, dark = false) {
                 Box(
@@ -179,6 +205,7 @@ class EditorActivity : ComponentActivity() {
                             canUndo = ui.canUndo,
                             canRedo = ui.canRedo,
                             history = history,
+                            thumbPath = { entry -> HistoryStore.filesOf(ctx, entry).thumb.absolutePath },
                             haptics = rememberHaptics(),
                             modifier = Modifier.fillMaxSize(),
                             onClose = { finish() },
@@ -195,15 +222,20 @@ class EditorActivity : ComponentActivity() {
                                     Toast.makeText(this@EditorActivity, R.string.open_failed, Toast.LENGTH_SHORT).show()
                                 } else {
                                     lifecycleScope.launch {
-                                        val file = File(entry.source)
-                                        vm.loadImage { ImageLoader.loadFile(this@EditorActivity, file) }
-                                        vm.restore(snapshot)
+                                        val file = HistoryStore.filesOf(ctx, entry).source
+                                        // suspend: finishes only after the new source is in,
+                                        // otherwise loadImage() resets the editor to defaults
+                                        // right after we restored it.
+                                        vm.openAndRestore(file, snapshot)
+                                        // reopening an entry keeps writing to the same row
+                                        currentSessionId = entry.id
                                     }
                                 }
                             },
                             onThemeToggle = {
                                 val next = ui.theme.toggled()
                                 vm.setTheme(next)
+                                sessionTheme = next
                                 scope.launch { DraftStore.setTheme(this@EditorActivity, next) }
                             },
                             onUndo = vm::undo,
@@ -262,6 +294,14 @@ class EditorActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        // last-chance autosave: covers "user just closed the card / swiped away"
+        if (vm.isDirty()) {
+            lifecycleScope.launch { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { autosave(force = true) } }
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.action == BubbleService.ACTION_FINISH_APP) {
@@ -303,17 +343,21 @@ class EditorActivity : ComponentActivity() {
     }
 
     private fun openUri(uri: Uri) {
+        // a new picture starts its own history row (autosave then updates that row in place)
+        currentSessionId = null
         vm.loadImage { ImageLoader.load(this, uri) }
     }
 
     private fun restoreSession(sessionId: String) {
         lifecycleScope.launch {
             val snapshot = DraftStore.load(this@EditorActivity, sessionId) ?: return@launch
+            currentSessionId = snapshot.historyId
             val file = snapshot.sourceUri?.let { File(it) }
             if (file != null && file.exists()) {
-                vm.loadImage { ImageLoader.loadFile(this@EditorActivity, file) }
+                vm.openAndRestore(file, snapshot)
+            } else {
+                vm.restore(snapshot)
             }
-            vm.restore(snapshot)
         }
     }
 
@@ -347,7 +391,8 @@ class EditorActivity : ComponentActivity() {
             return
         }
         scope.launch {
-            runCatching { recordHistory() }
+            // record first, so the bubble session and the history row share one id
+            runCatching { autosave(force = true) }
             val sessionId = "session_${System.currentTimeMillis()}"
             val thumb = vm.bubbleThumb()
             val thumbUri = thumb?.let { runCatching { Exporter.writeThumb(this@EditorActivity, it) }.getOrNull() }
@@ -359,7 +404,8 @@ class EditorActivity : ComponentActivity() {
                     DraftSnapshot(
                         sourceUri = source,
                         state = vm.currentState(),
-                        theme = vm.currentTheme(),
+                        theme = sessionTheme,
+                        historyId = currentSessionId,
                     ),
                 )
                 BubbleService.start(this@EditorActivity, sessionId, thumbUri)
@@ -370,11 +416,30 @@ class EditorActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun recordHistory() {
-        val bmp = vm.source ?: return
-        runCatching {
-            HistoryStore.record(this, bmp, vm.currentState(), vm.currentTheme())
+    /**
+     * Writes the current session into the history. Re-uses [currentSessionId] so the list
+     * shows one row per picture, not one row per save.
+     */
+    private suspend fun autosave(force: Boolean = false): HistoryEntry? {
+        val bmp = vm.source ?: return null
+        if (!force && !vm.isDirty()) return null
+        val entry = HistoryStore.record(
+            context = this,
+            bitmap = bmp,
+            state = vm.currentState(),
+            theme = sessionTheme,
+            sourceFile = vm.sourceFile,
+            sessionId = currentSessionId,
+        )
+        if (entry != null) {
+            currentSessionId = entry.id
+            vm.markSaved()
         }
+        return entry
+    }
+
+    private suspend fun recordHistory() {
+        autosave(force = true)
     }
 
     private fun renderCurrent(): Bitmap? {

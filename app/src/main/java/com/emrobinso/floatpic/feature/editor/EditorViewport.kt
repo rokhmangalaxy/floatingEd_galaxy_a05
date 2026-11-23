@@ -113,9 +113,9 @@ fun EditorViewport(
             modifier = Modifier
                 .size(window.first, window.second)
                 .onSizeChanged { if (it.width > 1) viewportWidth = it.width.toFloat() }
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFF0B0B0D))
-                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val start = stateRef.transform

@@ -19,6 +19,8 @@ data class DraftSnapshot(
     val scale: Float = 1f,
     val theme: AppTheme = AppTheme.MAROON_DARK,
     val savedAt: Long = System.currentTimeMillis(),
+    /** history row this session belongs to (so minimize -> reopen keeps updating it) */
+    val historyId: String? = null,
 ) {
     companion object {
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
