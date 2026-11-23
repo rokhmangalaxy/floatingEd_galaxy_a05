@@ -61,8 +61,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.min
@@ -448,7 +446,7 @@ private fun Modifier.bubbleGestures(
         var dragging = false
         var closed = false
         val slop = 12.dp.toPx()
-        coroutineScope {
+        try {
             val holdJob = launch {
                 var elapsed = 0L
                 while (elapsed < HOLD_MS) {
@@ -477,7 +475,6 @@ private fun Modifier.bubbleGestures(
                     change.consume()
                 }
             }
-            holdJob.cancelAndJoin()
             onPressChange(false)
             if (!closed) {
                 if (dragging) {
@@ -487,6 +484,8 @@ private fun Modifier.bubbleGestures(
                     onTap()
                 }
             }
+        } finally {
+            onHoldTick(0f)
         }
     }
 }
