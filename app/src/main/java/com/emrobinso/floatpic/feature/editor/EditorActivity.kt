@@ -148,6 +148,8 @@ class EditorActivity : ComponentActivity() {
                 history = HistoryStore.list(ctx)
             }
             LaunchedEffect(historyOpen) { if (historyOpen) refreshHistory() }
+            LaunchedEffect(ui.savedTick) { refreshHistory() }
+            LaunchedEffect(Unit) { refreshHistory() }
 
             FloatPicTheme(theme = ui.theme, dark = false) {
                 Box(

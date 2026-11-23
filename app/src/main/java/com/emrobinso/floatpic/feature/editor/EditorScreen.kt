@@ -74,7 +74,9 @@ import com.emrobinso.floatpic.ui.Haptics
 import com.emrobinso.floatpic.ui.icons.FloatIcons
 import com.emrobinso.floatpic.ui.theme.AppTheme
 import com.emrobinso.floatpic.ui.theme.LocalExtra
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT, MIRROR }
 
@@ -503,8 +505,11 @@ private fun HistoryStrip(
             horizontalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             history.forEach { entry ->
-                val thumb: Bitmap? = remember(entry.id) {
-                    android.graphics.BitmapFactory.decodeFile(entry.thumb)
+                var thumb by remember(entry.id) { mutableStateOf<Bitmap?>(null) }
+                LaunchedEffect(entry.id) {
+                    thumb = withContext(Dispatchers.IO) {
+                        android.graphics.BitmapFactory.decodeFile(entry.thumb)
+                    }
                 }
                 Box(
                     Modifier
