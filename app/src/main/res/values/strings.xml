@@ -14,7 +14,7 @@
     <string name="action_theme">Tema</string>
 
     <string name="tool_crop">Potong</string>
-    <string name="tool_frame">Bingkai</string>
+    <string name="tool_frame">Posisi</string>
     <string name="tool_background">Latar</string>
     <string name="tool_text">Teks</string>
     <string name="tool_rotate">Putar</string>
@@ -27,8 +27,8 @@
 
     <string name="panel_crop_title">Potong gambar</string>
     <string name="panel_crop_hint">Geser gambar, cubit untuk zoom, dua jari untuk putar. Semua bisa di-undo.</string>
-    <string name="panel_frame_title">Bingkai &amp; posisi</string>
-    <string name="panel_frame_hint">Geser gambar di dalam bingkai. Ketuk 9 titik untuk menempelkan posisi.</string>
+    <string name="panel_frame_title">Posisi gambar</string>
+    <string name="panel_frame_hint">Atur letak gambar relatif terhadap bingkai. Ketuk 9 titik untuk menempelkan posisi, atau geser bebas.</string>
     <string name="panel_background_title">Latar</string>
     <string name="panel_text_title">Teks</string>
     <string name="panel_rotate_title">Putar &amp; cermin</string>

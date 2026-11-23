@@ -104,6 +104,20 @@ jobs:
           } > /tmp/comment.md
           gh issue comment "$NUM" --body-file /tmp/comment.md
 
+      - name: Verify signature matches the committed key
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk \
+            | tee /tmp/certs.txt
+          EXPECTED="BD:E2:3A:AC:99:C0:1B:DD:73:E4:4D:35:3D:E8:E0:60:7F:FE:46:8A:15:A5:B4:7F:B7:78:48:50:50:94:01:0D"
+          if grep -qi "$EXPECTED" /tmp/certs.txt; then
+            echo "certificate OK -> in-place updates guaranteed"
+          elif [ -n "${{ secrets.FLOATPIC_KEY_BASE64 }}" ]; then
+            echo "using a custom key from secrets; skipping fingerprint match"
+          else
+            echo "::error::signature changed - builds would require an uninstall"; exit 1
+          fi
+
       - name: Name the artifact
         run: |
           mkdir -p dist
@@ -120,7 +134,7 @@ jobs:
           retention-days: 30
 
       - name: Publish to rolling release
-        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

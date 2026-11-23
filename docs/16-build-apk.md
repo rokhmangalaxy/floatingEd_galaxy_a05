@@ -50,6 +50,18 @@ Workflow: [`.github/workflows/build.yml`](../.github/workflows/build.yml)
 3. Hapus `app/keystore/floatpic.p12` dari repo. Workflow otomatis memakai secret bila ada.
 4. Simpan cadangan kunci — bila hilang, aplikasi tidak bisa di-update sama sekali.
 
+## Verifikasi sidik jari kunci (penting!)
+
+Agar APK baru **pasti** bisa menimpa yang lama, sertifikat harus identik:
+
+```
+SHA-256: BD:E2:3A:AC:99:C0:1B:DD:73:E4:4D:35:3D:E8:E0:60:7F:FE:46:8A:15:A5:B4:7F:B7:78:48:50:50:94:01:0D
+```
+
+- Sertifikat publik: [`docs/signing-cert.der`](signing-cert.der) / [`docs/signing-cert.pem.b64`](signing-cert.pem.b64).
+- Cek APK yang kamu unduh: `apksigner verify --print-certs FloatPic-latest.apk` → harus sama.
+- CI memasang pemeriksaan ini otomatis setelah build (langkah "Verify signature") dan gagal bila berbeda.
+
 ## Catatan artifact
 
 - APK release di-minify (R8) + shrink resources.

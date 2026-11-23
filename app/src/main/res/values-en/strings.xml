@@ -14,7 +14,7 @@
     <string name="action_theme">Theme</string>
 
     <string name="tool_crop">Crop</string>
-    <string name="tool_frame">Frame</string>
+    <string name="tool_frame">Position</string>
     <string name="tool_background">Background</string>
     <string name="tool_text">Text</string>
     <string name="tool_rotate">Rotate</string>
@@ -27,8 +27,8 @@
 
     <string name="panel_crop_title">Crop image</string>
     <string name="panel_crop_hint">Drag to move, pinch to zoom, two fingers to rotate. Everything is undoable.</string>
-    <string name="panel_frame_title">Frame &amp; position</string>
-    <string name="panel_frame_hint">Move the image inside the frame. Tap one of the 9 dots to snap it.</string>
+    <string name="panel_frame_title">Image position</string>
+    <string name="panel_frame_hint">Place the image relative to its frame. Tap one of the 9 dots to snap, or drag freely.</string>
     <string name="panel_background_title">Background</string>
     <string name="panel_text_title">Text</string>
     <string name="panel_rotate_title">Rotate &amp; mirror</string>
