@@ -161,8 +161,8 @@ class EditorViewModel : ViewModel() {
             it.copy(
                 background = BackgroundSpec(
                     kind = BackgroundKind.GRADIENT,
-                    color = c1,
-                    color2 = c2,
+                    color = c1.toLong(),
+                    color2 = c2.toLong(),
                 ),
             )
         }

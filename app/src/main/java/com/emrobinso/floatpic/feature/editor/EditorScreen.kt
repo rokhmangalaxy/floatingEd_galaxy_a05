@@ -597,21 +597,32 @@ private fun ToolPanel(
         if (tool != Tool.NONE) {
             Spacer(Modifier.height(6.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                MiniAction("-90°") { FloatIcons.Rotate(tint = scheme.onSurface, modifier = Modifier.size(19.dp)) } {
-                    onRotate(-90f)
-                }
-                MiniAction("+90°") { FloatIcons.Rotate(tint = scheme.onSurface, modifier = Modifier.size(19.dp)) } {
-                    onRotate(90f)
-                }
-                MiniAction(ctx.getString(R.string.tool_mirror_h)) {
-                    FloatIcons.MirrorH(tint = scheme.onSurface, modifier = Modifier.size(19.dp))
-                } { onFlipH() }
-                MiniAction(ctx.getString(R.string.tool_mirror_v)) {
-                    FloatIcons.MirrorV(tint = scheme.onSurface, modifier = Modifier.size(19.dp))
-                } { onFlipV() }
-                MiniAction(ctx.getString(R.string.action_close), primary = true) {
-                    FloatIcons.Check(tint = scheme.onPrimary, modifier = Modifier.size(19.dp))
-                } { onDone() }
+                MiniAction(
+                    label = "-90°",
+                    icon = { FloatIcons.Rotate(tint = scheme.onSurface, modifier = Modifier.size(19.dp)) },
+                    onClick = { onRotate(-90f) },
+                )
+                MiniAction(
+                    label = "+90°",
+                    icon = { FloatIcons.Rotate(tint = scheme.onSurface, modifier = Modifier.size(19.dp)) },
+                    onClick = { onRotate(90f) },
+                )
+                MiniAction(
+                    label = ctx.getString(R.string.tool_mirror_h),
+                    icon = { FloatIcons.MirrorH(tint = scheme.onSurface, modifier = Modifier.size(19.dp)) },
+                    onClick = onFlipH,
+                )
+                MiniAction(
+                    label = ctx.getString(R.string.tool_mirror_v),
+                    icon = { FloatIcons.MirrorV(tint = scheme.onSurface, modifier = Modifier.size(19.dp)) },
+                    onClick = onFlipV,
+                )
+                MiniAction(
+                    label = ctx.getString(R.string.action_close),
+                    primary = true,
+                    icon = { FloatIcons.Check(tint = scheme.onPrimary, modifier = Modifier.size(19.dp)) },
+                    onClick = onDone,
+                )
             }
         }
     }
