@@ -9,6 +9,11 @@
 | 3 | Teks | Satu lapis, **atas-tengah / bawah-tengah**, **putih+stroke hitam** / **hitam+stroke putih** |
 | 4 | Aksi utama | Simpan, Share, Minimize (bubble), Close (dari bubble) |
 | 5 | Tema | **Neumorphism** & **Pastel Maroon 500% saturasi**, bisa di-toggle |
+| 6 | Snap haptic | Limit pinch, snap rotate (±3°), tap posisi 9 titik, double-tap zoom |
+| 7 | Mirror | Tool **Cermin** (horizontal/vertikal) di tool row; teks tidak ikut terbalik |
+| 8 | Align → **Posisi** | Label & ikon diganti: panah menempelkan gambar relatif terhadap bingkai (dulu "align"/frame) |
+| 9 | Ikon app | **Wadah cat + kuas + awan kinton** (digambar via `tools/gen_art.py`) |
+| 10 | Build & distribusi | GitHub Actions → rolling release `apk-latest`; kunci tetap → update menimpa |
 
 Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bubble), dan 14 (tema).
 
@@ -44,11 +49,22 @@ Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bu
 - [ ] 3 modul (`app`, `core`, `feature:editor`) — rekomendasi?
 - [ ] DI manual dulu (rekomendasi) vs Hilt?
 
-## Next actions
+## Status implementasi (v0.1 — sudah di APK)
 
-1. Kunci jawaban di atas (bisa bilang "pakai rekomendasi semua").
-2. Saya setup skeleton project (Gradle, Compose, manifest share target).
-3. Bangun `EditorState` + renderer preview=export (inti).
-4. Layar editor L1: viewport, rasio, crop/align, background, teks.
-5. Bubble service: izin, drag+snap, hold-to-close, restore.
-6. Tema: token Neumorphism & Maroon + toggle.
+- [x] Skeleton Gradle + Compose, `minSdk 26`, manifest share target + launcher
+- [x] `EditorState` + renderer preview=export (satu fungsi), EXIF, sampling
+- [x] Viewport L1, rasio, crop (fill/fit), posisi 9 titik, background (solid/gradasi/blur/pattern/ambient), padding/sudut/shadow
+- [x] Gesture pinch/pan/rotate + snap + clamp haptic, double-tap zoom
+- [x] Teks satu lapis (atas/bawah, putih⇄hitam stroke, auto-fit 3 baris, live preview)
+- [x] Cermin H/V, rotate ±90°, undo/redo
+- [x] Simpan galeri (incl. izin legacy API ≤28), share, minimize ke bubble, restore, hold-close
+- [x] Tema Neumorphism & Pastel Maroon + toggle persisten
+- [x] CI: build release bertanda tangan, verifikasi fingerprint kunci, rilis `apk-latest`
+
+## Berikutnya (v0.2)
+
+1. Preset kontekstual (screenshot/portrait/meme) + preset simpan sendiri.
+2. Batch edit (share banyak gambar → satu rasio/background).
+3. Semua-permukaan blur: buram dari gambar yang sama untuk area tepi (saat ini vignette).
+4. Teks: 1 font display tambahan, opsi scrim.
+5. Uji perangkat nyata (Samsung/Xiaomi/Oppo) untuk share sheet & izin overlay.

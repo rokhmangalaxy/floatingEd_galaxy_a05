@@ -28,9 +28,9 @@ Workflow: [`.github/workflows/build.yml`](../.github/workflows/build.yml)
 
 | Cara | Link |
 |---|---|
-| Rolling release (stabil, selalu menimpa) | `https://github.com/rokhmangalaxy/floatingEd_galaxy_a05/releases/download/apk-latest/FloatPic-latest.apk` |
+| **Rolling release (link tetap, rekomendasi)** | https://github.com/rokhmangalaxy/floatingEd_galaxy_a05/releases/download/apk-latest/FloatPic-latest.apk |
 | Artifact per-build | tab **Actions** → run terakhir → **Artifacts** → `FloatPic-<version>` |
-| Release page | `https://github.com/rokhmangalaxy/floatingEd_galaxy_a05/releases`
+| Halaman rilis (menampilkan versionName/versionCode terbaru) | https://github.com/rokhmangalaxy/floatingEd_galaxy_a05/releases/tag/apk-latest |
 
 ## Instalasi pertama & seterusnya
 
