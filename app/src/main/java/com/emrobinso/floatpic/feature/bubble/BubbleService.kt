@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,9 +61,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.math.min
 
 /**
@@ -405,16 +407,18 @@ private fun BubbleContent(
             }
         }
         if (progress > 0f) {
-            Text(
-                text = getStringStatic(R.string.bubble_hold_hint),
-                color = Color(0xFFFFF9F7),
-                fontSize = 7.sp,
-                maxLines = 1,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .background(Color(0xE67A0C2E), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 3.dp, vertical = 1.dp),
-            )
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                Text(
+                    text = getStringStatic(R.string.bubble_hold_hint),
+                    color = Color(0xFFFFF9F7),
+                    fontSize = 6.sp,
+                    lineHeight = 6.sp,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .background(Color(0xE67A0C2E), RoundedCornerShape(3.dp))
+                        .padding(horizontal = 2.dp, vertical = 1.dp),
+                )
+            }
         }
     }
 }
@@ -444,42 +448,47 @@ private fun Modifier.bubbleGestures(
         var dragging = false
         var closed = false
         val slop = 12.dp.toPx()
-        val holdMs = 1600L
-        val holdJob = launch {
-            var elapsed = 0L
-            while (elapsed < holdMs) {
-                delay(40)
-                elapsed += 40
-                onHoldTick((elapsed.toFloat() / holdMs).coerceIn(0f, 1f))
-            }
-            closed = true
-            onHoldTick(0f)
-            onClose()
-        }
-        while (true) {
-            val event = awaitPointerEvent()
-            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-            if (!change.pressed) break
-            val travel = (change.position - down.position).getDistance()
-            if (!dragging && travel > slop) {
-                dragging = true
-                holdJob.cancel()
+        coroutineScope {
+            val holdJob = launch {
+                var elapsed = 0L
+                while (elapsed < HOLD_MS) {
+                    delay(40)
+                    elapsed += 40
+                    onHoldTick((elapsed.toFloat() / HOLD_MS).coerceIn(0f, 1f))
+                }
+                closed = true
                 onHoldTick(0f)
-                onDragStart()
+                onClose()
             }
-            if (dragging) {
-                val delta = change.positionChange()
-                if (abs(delta.x) + abs(delta.y) > 0.2f) onDrag(delta.x, delta.y)
-                change.consume()
+            while (!closed) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id }
+                if (change == null || !change.pressed) break
+                val travel = (change.position - down.position).getDistance()
+                if (!dragging && travel > slop) {
+                    dragging = true
+                    holdJob.cancel()
+                    onHoldTick(0f)
+                    onDragStart()
+                }
+                if (dragging) {
+                    val delta = change.positionChange()
+                    if (delta.x != 0f || delta.y != 0f) onDrag(delta.x, delta.y)
+                    change.consume()
+                }
             }
-        }
-        holdJob.cancel()
-        onPressChange(false)
-        if (dragging && !closed) {
-            onDragEnd()
-        } else if (!closed) {
-            onHoldTick(0f)
-            onTap()
+            holdJob.cancelAndJoin()
+            onPressChange(false)
+            if (!closed) {
+                if (dragging) {
+                    onDragEnd()
+                } else {
+                    onHoldTick(0f)
+                    onTap()
+                }
+            }
         }
     }
 }
+
+private const val HOLD_MS = 1600L
