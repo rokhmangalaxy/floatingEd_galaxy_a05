@@ -19,6 +19,13 @@
 - Menu yang dipilih muncul sebagai **overlay di atas preview** — tidak menggeser preview, icon row, maupun tombol Simpan/Share. Hanya panel itu yang bergerak.
 - **Toggle tema**: Maroon ⇄ Dark (ikon matahari/bulan di top bar, tersimpan).
 
+## Riwayat (10 terakhir)
+
+- **Autosave**: ~1,2 dtk setelah edit terakhir + saat Simpan/Bagikan/Minimize/Keluar.
+- Satu gambar = satu baris riwayat (diperbarui di tempat, bukan menumpuk duplikat).
+- Entri menyimpan **gambar sumber + state editor**, jadi saat dibuka lagi kamu lanjut mengedit,
+  bukan menerima gambar yang sudah diratakan. Tema aplikasi tidak berubah.
+
 ## Fitur yang sudah ada di v0.1
 
 Share target (single + multiple) · launcher biasa input galeri · floating editor L1 · rasio populer (Asli, 1:1, 4:5, 9:16, 16:9, 3:2, 4:3, 2:3, 3:4, 5:4, 9:20) · **Crop** (fill/fit, reset) · **Posisi** (9 titik + geser bebas) · latar solid/gradasi/blur/pattern + ambient color · padding, sudut, shadow · pinch-zoom, rotate + **snap haptic**, limit haptic · **Cermin** horizontal/vertikal · teks satu lapis (atas/bawah, putih⇄hitam stroke) · undo/redo · simpan ke galeri · share · **minimize ke bubble** + hold **1,6 s** → ring + haptic tick → getar → close app · tema **Neumorphism** / **Pastel Maroon**.

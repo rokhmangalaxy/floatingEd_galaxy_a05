@@ -82,6 +82,18 @@ Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bu
 - [x] Tap area preview menutup panel
 - [x] **Jendela preview mengikuti rasio** (asli atau presisi pilihan) **di dalam** container yang **selalu kotak** — diperbaiki: `fillMaxSize().aspectRatio()` diabaikan saat constraint fixed, jadi dulu jendelanya selalu 1:1 memenuhi kotak
 
+## v0.2.1 — perbaikan riwayat & tampilan
+
+- [x] **Autosave ke riwayat**: 1,2 dtk setelah edit terakhir, saat Save/Share/Minimize, dan saat
+      kartu ditutup. Satu gambar = **satu baris** riwayat (id sesi dipakai ulang), bukan 10 duplikat.
+- [x] **Riwayat menyimpan sumber + state editor**, bukan JPEG hasil render. Jadi membuka riwayat
+      mengembalikan *edit*, bukan gambar yang sudah "dibakar", dan tidak ada kompresi ganda.
+- [x] **Buka riwayat tidak lagi reset**: dulu `loadImage()` menyelesaikan reset ke state default
+      *setelah* restore (race) → editor balik 1:1. Sekarang urutannya dijamin.
+- [x] **Tema tidak lagi ikut berubah** saat membuka entri riwayat: tema = preferensi aplikasi,
+      hanya diubah lewat tombol matahari/bulan.
+- [x] Margin atas/bawah preview dikecilkan dan corner radius kartu 28 → 16 dp.
+
 ## Berikutnya (v0.3)
 
 1. Preset kontekstual (screenshot/portrait/meme) + preset simpan sendiri.
