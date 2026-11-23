@@ -12,6 +12,13 @@
 - Halaman rilis: [`releases/tag/apk-latest`](https://github.com/rokhmangalaxy/floatingEd_galaxy_a05/releases/tag/apk-latest) — berisi `versionName`, `versionCode`, dan `SHA256SUMS.txt` terbaru.
 - Detail tanda tangan & CI: [`docs/16-build-apk.md`](docs/16-build-apk.md).
 
+## Tata letak (v0.2)
+
+- **Container preview kotak (1:1)** — jendela rasio asli / pilihan rasio tampil di tengahnya.
+- **Hanya icon row yang permanen**: `Rasio · Crop · Posisi · Latar · Teks · Cermin · Riwayat`.
+- Menu yang dipilih muncul sebagai **overlay di atas preview** — tidak menggeser preview, icon row, maupun tombol Simpan/Share. Hanya panel itu yang bergerak.
+- **Toggle tema**: Maroon ⇄ Dark (ikon matahari/bulan di top bar, tersimpan).
+
 ## Fitur yang sudah ada di v0.1
 
 Share target (single + multiple) · launcher biasa input galeri · floating editor L1 · rasio populer (Asli, 1:1, 4:5, 9:16, 16:9, 3:2, 4:3, 2:3, 3:4, 5:4, 9:20) · **Crop** (fill/fit, reset) · **Posisi** (9 titik + geser bebas) · latar solid/gradasi/blur/pattern + ambient color · padding, sudut, shadow · pinch-zoom, rotate + **snap haptic**, limit haptic · **Cermin** horizontal/vertikal · teks satu lapis (atas/bawah, putih⇄hitam stroke) · undo/redo · simpan ke galeri · share · **minimize ke bubble** + hold **1,6 s** → ring + haptic tick → getar → close app · tema **Neumorphism** / **Pastel Maroon**.

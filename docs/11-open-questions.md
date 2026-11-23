@@ -72,7 +72,16 @@ Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bu
 - [x] **Riwayat 10 edit** (foto + state) yang bisa dibuka lagi tanpa kehilangan setting.
 - [x] Thumbnail riwayat didecode di background thread (tidak nge-freeze UI).
 
-## Berikutnya (v0.2)
+## v0.2 — tata letak baru
+
+- [x] Container preview **kotak 1:1**; isi mengikuti **rasio asli** atau rasio pilihan
+- [x] **Hanya icon row** yang tampil permanen (7 ikon: Rasio, Crop, Posisi, Latar, Teks, Cermin, Riwayat)
+- [x] Panel menu **overlay** di atas preview → preview/icon row/CTA tidak bergeser
+- [x] Ikon **Rasio** & **Riwayat** ditambahkan ke icon row
+- [x] Toggle **Maroon ⇄ Dark** (matahari/bulan), default Dark, tersimpan
+- [x] Tap area preview menutup panel
+
+## Berikutnya (v0.3)
 
 1. Preset kontekstual (screenshot/portrait/meme) + preset simpan sendiri.
 2. Batch edit (share banyak gambar → satu rasio/background).
