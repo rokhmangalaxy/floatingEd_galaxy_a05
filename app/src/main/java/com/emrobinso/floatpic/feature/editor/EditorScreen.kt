@@ -213,6 +213,7 @@ fun EditorScreen(
                 ToolPanel(
                     tool = tool,
                     state = state,
+                    haptics = haptics,
                     onReset = onReset,
                     onAlign = onAlign,
                     onPadding = onPadding,
@@ -503,6 +504,7 @@ private fun EmptyState(onPick: () -> Unit) {
 private fun ToolPanel(
     tool: Tool,
     state: EditorState,
+    haptics: Haptics,
     onReset: () -> Unit,
     onAlign: (Float, Float) -> Unit,
     onPadding: (Float) -> Unit,
@@ -556,7 +558,7 @@ private fun ToolPanel(
                 Hint(ctx.getString(R.string.panel_frame_hint))
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    AlignGrid(onAlign)
+                    AlignGrid { fx, fy -> haptics.snap(); onAlign(fx, fy) }
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         SliderRow(ctx.getString(R.string.label_padding), state.paddingDp, 0f..160f, onPadding)

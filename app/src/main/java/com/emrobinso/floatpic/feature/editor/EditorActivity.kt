@@ -265,6 +265,8 @@ class EditorActivity : ComponentActivity() {
 
         val sessionId = intent.getStringExtra(EXTRA_RESTORE_SESSION)
         if (sessionId != null) {
+            // the editor is taking over: the bubble must not float above it
+            BubbleService.hide(this)
             restoreSession(sessionId)
             return
         }

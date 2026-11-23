@@ -109,6 +109,10 @@ class BubbleService : Service() {
                 closeApp()
                 return START_NOT_STICKY
             }
+            ACTION_HIDE -> {
+                hideBubble()
+                return START_NOT_STICKY
+            }
             ACTION_UPDATE_NOTIF -> startForegroundWithNotification()
         }
         intent?.getStringExtra(EXTRA_SESSION)?.let { sessionId = it }
@@ -249,6 +253,15 @@ class BubbleService : Service() {
         }
     }
 
+    /** Editor reopened: remove the bubble but keep the draft for the next minimize. */
+    private fun hideBubble() {
+        idleJob?.cancel()
+        runCatching { if (view != null) windowManager.removeView(view) }
+        view = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     private fun closeApp() {
         runCatching { if (view != null) windowManager.removeView(view) }
         view = null
@@ -282,6 +295,7 @@ class BubbleService : Service() {
         const val ACTION_FINISH_APP = "com.emrobinso.floatpic.FINISH_APP"
         const val ACTION_UPDATE_NOTIF = "com.emrobinso.floatpic.bubble.UPDATE_NOTIF"
         const val ACTION_RESTORE = "com.emrobinso.floatpic.bubble.RESTORE"
+        const val ACTION_HIDE = "com.emrobinso.floatpic.bubble.HIDE"
         const val EXTRA_SESSION = "bubble.session"
         const val EXTRA_THUMB_URI = "bubble.thumb"
         private const val CHANNEL_ID = "floatpic_bubble"
@@ -296,6 +310,14 @@ class BubbleService : Service() {
                 context.startForegroundService(intent)
             } else {
                 context.startService(intent)
+            }
+        }
+
+        fun hide(context: Context) {
+            runCatching {
+                context.startService(
+                    Intent(context, BubbleService::class.java).setAction(ACTION_HIDE),
+                )
             }
         }
 
