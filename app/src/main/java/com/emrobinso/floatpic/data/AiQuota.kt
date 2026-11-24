@@ -3,65 +3,88 @@ package com.emrobinso.floatpic.data
 import android.content.Context
 
 /**
- * Counts successful AI generations for this device's IP.
+ * Keeps track of the per-IP AI allowance **from what the server actually says**.
  *
- * The public Spaces give an anonymous visitor a small daily allowance — the Rapid-AIO space
- * is 3 runs per IP per 24 h. The count is local (we cannot read the server's ledger), so it
- * is a *forecast*, not a gate: the app still lets the user try, it just says "this is run 2
- * of 3 today" so a refusal from the server is no longer a surprise.
+ * The previous version guessed: it counted successful runs locally and assumed a fixed
+ * "3 per 24 h". That was wrong for the way the counter is really used — the user switches to
+ * a new IP (VPN / hotspot) *after* the old one is exhausted, so the number shown has to follow
+ * the network, not a local tally.
  *
- * The counter resets 24 h after the first counted run.
+ * The rules here are the ones the Space enforces (Rapid-AIO: 3 anonymous runs per IP per
+ * 24 h). The count is keyed by public IP, so a new IP starts at 0 by itself, and it also
+ * takes the server's own refusal into account:
+ *
+ *  - a finished run                      -> used + 1 for that IP
+ *  - "you have exceeded …" / 429         -> that IP is marked exhausted right away
+ *
+ * Nothing is uploaded; the record lives in SharedPreferences.
  */
 object AiQuota {
 
     const val LIMIT = 3
-    private const val PREFS = "floatpic_ai_quota"
-    private const val KEY_IP = "ip"
-    private const val KEY_COUNT = "count"
-    private const val KEY_SINCE = "since"
-    private const val KEY_LAST = "last_at"
+    private const val WINDOW_MS = 24 * 60 * 60 * 1000L
+    private const val PREFS = "floatpic_ai_quota_v2"
 
-    data class State(
-        val ip: String?,
-        val used: Int,
-        val since: Long,
-        val lastAt: Long,
-    ) {
-        val remaining: Int get() = (LIMIT - used).coerceAtLeast(0)
+    data class Usage(val used: Int, val since: Long, val exhausted: Boolean) {
         val windowLeftMs: Long
-            get() = (since + 24 * 60 * 60 * 1000L - System.currentTimeMillis()).coerceAtLeast(0L)
+            get() = (since + WINDOW_MS - System.currentTimeMillis()).coerceAtLeast(0L)
+        val remaining: Int get() = if (exhausted) 0 else (LIMIT - used).coerceAtLeast(0)
     }
 
-    fun state(context: Context): State {
-        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val s = State(
-            ip = p.getString(KEY_IP, null),
-            used = p.getInt(KEY_COUNT, 0),
-            since = p.getLong(KEY_SINCE, 0L),
-            lastAt = p.getLong(KEY_LAST, 0L),
+    /** Current usage for [ip] (an expired window reads as zero). */
+    fun usage(context: Context, ip: String?): Usage {
+        val key = ip ?: return Usage(0, 0L, false)
+        val p = prefs(context)
+        val since = p.getLong("${key}_since", 0L)
+        if (since == 0L) return Usage(0, 0L, false)
+        val expired = since + WINDOW_MS <= System.currentTimeMillis()
+        if (expired) {
+            p.edit().remove("${key}_used").remove("${key}_since").remove("${key}_exhausted").apply()
+            return Usage(0, 0L, false)
+        }
+        return Usage(
+            used = p.getInt("${key}_used", 0),
+            since = since,
+            exhausted = p.getBoolean("${key}_exhausted", false),
         )
-        // expired window: pretend nothing was used
-        if (s.since > 0L && s.windowLeftMs == 0L) return s.copy(used = 0)
-        return s
     }
 
-    /** Records one finished run for [ip] (starting a new window when the old one expired). */
-    fun record(context: Context, ip: String?) {
+    /** One finished generation for [ip]. */
+    fun recordSuccess(context: Context, ip: String?) {
+        val key = ip ?: return
         val now = System.currentTimeMillis()
-        val current = state(context)
-        val sameIp = current.ip == null || current.ip == ip
-        val expired = current.since == 0L || current.windowLeftMs == 0L
-        val used = if (!sameIp || expired) 1 else current.used + 1
-        val since = if (!sameIp || expired) now else current.since
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(KEY_IP, ip)
-            .putInt(KEY_COUNT, used)
-            .putLong(KEY_SINCE, since)
-            .putLong(KEY_LAST, now)
+        val current = usage(context, ip)
+        val since = if (current.since == 0L) now else current.since
+        prefs(context).edit()
+            .putInt("${key}_used", current.used + 1)
+            .putLong("${key}_since", since)
+            .putBoolean("${key}_exhausted", current.used + 1 >= LIMIT)
             .apply()
     }
 
+    /** The server said no (limit reached / 429): this IP is done for the window. */
+    fun recordExhausted(context: Context, ip: String?) {
+        val key = ip ?: return
+        val current = usage(context, ip)
+        prefs(context).edit()
+            .putBoolean("${key}_exhausted", true)
+            .putInt("${key}_used", maxOf(current.used, LIMIT))
+            .putLong("${key}_since", if (current.since == 0L) System.currentTimeMillis() else current.since)
+            .apply()
+    }
+
+    /** Manual reset, kept for the rare case the server forgives earlier than we think. */
     fun reset(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+    }
+
+    private fun prefs(context: Context) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** True when a failure text looks like the per-IP limit rather than a random error. */
+    fun looksLikeLimit(message: String?): Boolean {
+        val m = message?.lowercase() ?: return false
+        return m.contains("exceed") || m.contains("quota") || m.contains("limit") ||
+            m.contains("429") || m.contains("too many")
     }
 }

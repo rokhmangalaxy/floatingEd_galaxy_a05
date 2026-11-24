@@ -87,8 +87,8 @@
     <string name="theme_maroon">Pastel Maroon</string>
     <string name="theme_dialog_title">Tema tampilan</string>
     <string name="panel_rotate_hint">Seret untuk memutar bebas. Menempel otomatis ke 0° / 90° / 180° / 270° dengan getar.</string>
-    <string name="panel_reset_title">Reset semua</string>
-    <string name="panel_reset_hint">Kembalikan gambar ke kondisi asli: rasio, posisi, zoom, putar, cermin, latar, bingkai, dan teks.</string>
+    <string name="panel_reset_title">Reset</string>
+    <string name="panel_reset_hint">Pilih: buang semua editan pada gambar ini, atau kembalikan gambar ke aslinya.</string>
     <string name="action_reset_all">Reset ke asli</string>
     <string name="reset_done">Gambar dikembalikan ke asli</string>
     <string name="bubble_failed">Bubble tidak bisa dibuat. Cek izin "Tampil di atas aplikasi lain" lalu coba lagi.</string>
@@ -132,5 +132,8 @@
     <string name="commit_edit_done">Hasil edit masuk riwayat</string>
     <string name="commit_edit_failed">Gagal menyimpan hasil edit</string>
     <string name="ai_quota">IP %3$s · %1$d/%2$d generate hari ini</string>
-    <string name="ai_quota_full">IP %1$s · kuota 3x/24 jam habis, sisa %2$d jam</string>
+    <string name="ai_quota_full">IP %1$s · kuota habis, sisa %2$d jam</string>
+    <string name="ai_quota_recheck">Cek IP</string>
+    <string name="action_reset_edits">Reset editan</string>
+    <string name="reset_edits_done">Editan dibersihkan, gambar tetap</string>
 </resources>

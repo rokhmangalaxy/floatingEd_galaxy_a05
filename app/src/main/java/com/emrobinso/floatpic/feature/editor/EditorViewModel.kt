@@ -60,6 +60,14 @@ class EditorViewModel : ViewModel() {
     /** File behind [baseSource], re-read at full size on demand. */
     private var baseFile: java.io.File? = null
 
+    /**
+     * The state the picture had right after the last source swap (open, AI result, history
+     * reopen). "Reset editan terakhir" returns here: the picture stays, the edits go.
+     */
+    private var editBase: EditorState = EditorState()
+
+    fun currentEditBase(): EditorState = editBase
+
     private val undo = ArrayDeque<EditorState>()
     private val redo = ArrayDeque<EditorState>()
     private var committed: EditorState = EditorState()
@@ -90,6 +98,7 @@ class EditorViewModel : ViewModel() {
                     orientation = 0
                     sourceFile = loaded.cacheFile
                     committed = EditorState()
+                    editBase = EditorState()
                     undo.clear()
                     redo.clear()
                     _ui.update {
@@ -145,6 +154,7 @@ class EditorViewModel : ViewModel() {
      */
     fun restore(snapshot: DraftSnapshot) {
         committed = snapshot.state
+        editBase = snapshot.state
         undo.clear()
         redo.clear()
         _ui.update {
@@ -266,8 +276,20 @@ class EditorViewModel : ViewModel() {
         committed = _ui.value.state
     }
 
-    /** "Reset ke asli": back to a pristine EditorState (undo puts the edits back). */
-    fun resetAll() = mutate { EditorState() }
+    /** Reset 1 — everything: pristine state AND the session base picture (undoable). */
+    fun resetAll() = mutate {
+        val base = baseSource
+        if (base != null && base !== source) {
+            source?.recycle()
+            source = base
+        }
+        sourceFile = baseFile
+        editBase = EditorState()
+        EditorState()
+    }
+
+    /** Reset 2 — edits only: keep the current picture, drop the edits (undoable). */
+    fun resetEdits() = mutate { editBase }
 
     fun setPadding(dp: Float) = mutate { it.copy(paddingDp = dp) }
 
@@ -345,6 +367,8 @@ class EditorViewModel : ViewModel() {
             )
         }
         committed = _ui.value.state
+        // an AI result is a new starting point: undoing the edits stops here
+        editBase = committed
     }
 
     fun setTextStyle(style: TextStylePreset) = mutate {

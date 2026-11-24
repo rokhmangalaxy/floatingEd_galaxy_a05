@@ -157,6 +157,10 @@ fun EditorScreen(
     onRotatePreview: (Float) -> Unit,
     onRotateCommit: (Float) -> Unit,
     onResetAll: () -> Unit,
+    onResetEdits: () -> Unit,
+    /** index of the entry currently open, -1 when the picture is not from history */
+    historyCurrent: Int,
+    onStepHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
     onText: (String) -> Unit,
@@ -277,6 +281,28 @@ fun EditorScreen(
                         )
                     }
 
+                    // ---- history stepper -------------------------------------------------
+                    // Two chevrons on the INSIDE edges of the preview: tap to walk through
+                    // the 20 saved pictures without opening the History tool. They are drawn
+                    // over the picture, so nothing shifts.
+                    if (history.isNotEmpty() && bitmap != null) {
+                        val idx = historyCurrent.coerceIn(0, history.lastIndex)
+                        Box(Modifier.align(Alignment.CenterStart)) {
+                            HistoryArrow(
+                                direction = -1,
+                                enabled = idx < history.lastIndex,
+                                onClick = { onStepHistory(history[idx + 1]) },
+                            )
+                        }
+                        Box(Modifier.align(Alignment.CenterEnd)) {
+                            HistoryArrow(
+                                direction = 1,
+                                enabled = idx > 0,
+                                onClick = { onStepHistory(history[idx - 1]) },
+                            )
+                        }
+                    }
+
                     // the only flexible element: a panel floating over the preview.
                     // It is drawn last => on top of the preview, without moving anything.
                     // plain `if` on purpose: AnimatedVisibility would resolve to the
@@ -321,6 +347,7 @@ fun EditorScreen(
                                 aiSession = aiSession,
                                 onAiApply = onAiApply,
                                 onInfo = onInfo,
+                                onResetEdits = onResetEdits,
                                 onDone = { tool = Tool.NONE },
                                 onOpenHistory = onOpenHistory,
                                 onDeleteHistory = onDeleteHistory,
@@ -338,6 +365,35 @@ fun EditorScreen(
             )
 
             ActionBar(onSave = onSave, onShare = onShare, onCommitEdit = onCommitEdit)
+        }
+    }
+}
+
+/** Chevron used by the preview's history stepper. */
+@Composable
+private fun HistoryArrow(direction: Int, enabled: Boolean, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        Modifier
+            .padding(horizontal = 2.dp)
+            .size(width = 24.dp, height = 40.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(scheme.surface.copy(alpha = if (enabled) .72f else .28f))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
+            val c = if (enabled) scheme.onSurface else scheme.onSurface.copy(alpha = .28f)
+            val w = size.width
+            val h = size.height
+            val thickness = 2.dp.toPx()
+            if (direction < 0) {
+                drawLine(c, androidx.compose.ui.geometry.Offset(w * .68f, h * .18f), androidx.compose.ui.geometry.Offset(w * .32f, h * .5f), thickness, androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(c, androidx.compose.ui.geometry.Offset(w * .32f, h * .5f), androidx.compose.ui.geometry.Offset(w * .68f, h * .82f), thickness, androidx.compose.ui.graphics.StrokeCap.Round)
+            } else {
+                drawLine(c, androidx.compose.ui.geometry.Offset(w * .32f, h * .18f), androidx.compose.ui.geometry.Offset(w * .68f, h * .5f), thickness, androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(c, androidx.compose.ui.geometry.Offset(w * .68f, h * .5f), androidx.compose.ui.geometry.Offset(w * .32f, h * .82f), thickness, androidx.compose.ui.graphics.StrokeCap.Round)
+            }
         }
     }
 }
@@ -828,6 +884,7 @@ private fun OverlayPanel(
     onRotatePreview: (Float) -> Unit,
     onRotateCommit: (Float) -> Unit,
     onResetAll: () -> Unit,
+    onResetEdits: () -> Unit,
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
     onText: (String) -> Unit,
@@ -996,10 +1053,16 @@ private fun OverlayPanel(
                 Spacer(Modifier.height(4.dp))
                 Hint(ctx.getString(R.string.panel_reset_hint))
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PrimaryPill(ctx.getString(R.string.action_reset_all), onResetAll) {
-                        FloatIcons.ResetAll(tint = scheme.onPrimary, modifier = Modifier.size(15.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // 1. keep the picture, drop the edits
+                    PrimaryPill(ctx.getString(R.string.action_reset_edits), onResetEdits) {
+                        FloatIcons.Undo(tint = scheme.onPrimary, modifier = Modifier.size(15.dp))
                     }
+                    // 2. back to the original picture, edits included
+                    PillToggle(ctx.getString(R.string.action_reset_all), false, onResetAll)
                     PillToggle("Grid", guidesOn, onGuides)
                 }
             }

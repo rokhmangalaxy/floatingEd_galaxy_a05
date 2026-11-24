@@ -83,12 +83,21 @@ class AiSessionState(
     var backend by mutableStateOf(AiBackend.of(AiPromptStore.backend(context)))
         private set
 
-    /** "2/3 hari ini" for the current IP; null for backends without a known limit */
-    var quota by mutableStateOf<AiQuota.State?>(null)
+    /** public IP this device currently exits from ("-" until the lookup finishes") */
+    var ip by mutableStateOf<String?>(null)
+        private set
+    var quota by mutableStateOf(AiQuota.Usage(0, 0L, false))
         private set
 
+    /** Re-reads the public IP (cached 1 h) and the usage for it. */
     fun refreshQuota() {
-        quota = AiQuota.state(context)
+        scope.launch {
+            val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                IpInfo.lookup(refresh = true)
+            }
+            ip = found
+            quota = AiQuota.usage(context, found)
+        }
     }
     var busy by mutableStateOf(false)
         private set
@@ -203,11 +212,11 @@ class AiSessionState(
             job = null
             when (res) {
                 is AiEditClient.Result.Ok -> {
-                    // a finished run is one unit of the per-IP allowance
+                    // a finished run is one unit for the IP we are currently behind
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        val ip = IpInfo.lookup()
-                        AiQuota.record(context, ip)
-                        note("kuota: percobaan ke-${AiQuota.state(context).used} untuk IP ${ip ?: "?"}")
+                        val here = ip ?: IpInfo.lookup()
+                        AiQuota.recordSuccess(context, here)
+                        note("kuota IP $here: ${AiQuota.usage(context, here).used}/${AiQuota.LIMIT}")
                     }
                     refreshQuota()
                     results.add(0, AiCandidate(res.bitmap, sentPrompt, lora))
@@ -220,6 +229,14 @@ class AiSessionState(
                     error = res.message
                     stage = ""
                     note("gagal: ${res.message}")
+                    // the server itself said the allowance is gone: remember it for this IP
+                    if (AiQuota.looksLikeLimit(res.message)) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            AiQuota.recordExhausted(context, ip ?: IpInfo.lookup())
+                        }
+                        note("server menolak: IP $ip ditandai habis")
+                        refreshQuota()
+                    }
                     onInfo(context.getString(R.string.ai_failed_detail, res.message))
                 }
             }
@@ -355,19 +372,34 @@ fun AiPanel(
 
         // per-IP allowance: the public Space gives ~3 runs per IP per 24 h, so say where
         // this device stands BEFORE the user spends one
-        session.quota?.let { q ->
-            val ip = q.ip ?: "-"
+        run {
+            val q = session.quota
+            val here = session.ip ?: "-"
             val left = q.remaining
-            val windowH = (q.windowLeftMs / (60 * 60 * 1000L)).toInt()
-            Text(
-                if (left > 0) {
-                    ctx.getString(R.string.ai_quota, q.used, AiQuota.LIMIT, ip)
-                } else {
-                    ctx.getString(R.string.ai_quota_full, ip, windowH)
-                },
-                fontSize = 9.sp,
-                color = if (left > 0) scheme.onSurfaceVariant else scheme.error,
-            )
+            val windowH = (q.windowLeftMs / (60 * 60 * 1000L)).toInt().coerceAtLeast(1)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (left > 0) {
+                        ctx.getString(R.string.ai_quota, q.used, AiQuota.LIMIT, here)
+                    } else {
+                        ctx.getString(R.string.ai_quota_full, here, windowH)
+                    },
+                    fontSize = 9.sp,
+                    color = if (left > 0) scheme.onSurfaceVariant else scheme.error,
+                )
+                Spacer(Modifier.weight(1f))
+                // ganti IP lalu tekan ini: hitungan dibaca ulang untuk jaringan yang baru
+                Text(
+                    ctx.getString(R.string.ai_quota_recheck),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = scheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable { session.refreshQuota() }
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                )
+            }
             Spacer(Modifier.height(4.dp))
         }
 

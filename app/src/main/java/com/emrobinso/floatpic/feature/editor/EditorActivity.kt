@@ -86,6 +86,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -103,6 +104,9 @@ class EditorActivity : ComponentActivity() {
 
     /** Most recent theme choice; recorded with the session and kept app-wide. */
     private var sessionTheme: AppTheme = AppTheme.MAROON_DARK
+
+    /** set from setContent so suspend code can publish a new history list */
+    private var onHistoryChanged: (List<com.emrobinso.floatpic.data.HistoryEntry>) -> Unit = {}
 
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -207,6 +211,8 @@ class EditorActivity : ComponentActivity() {
             val maxShiftX = with(uiDensity) { (screenW * 0.16f / 2f).toPx() }
             val maxShiftY = with(uiDensity) { (screenMaxHeight.dp * 0.16f / 2f).toPx() }
             var history by remember { mutableStateOf<List<com.emrobinso.floatpic.data.HistoryEntry>>(emptyList()) }
+            // which row of `history` is currently open (-1 = a fresh picture)
+            var historyIndex by remember { mutableStateOf(-1) }
             val enter by animateFloatAsState(1f, tween(220), label = "enter")
             val ctx = LocalContext.current
             val haptics = rememberHaptics()
@@ -214,8 +220,23 @@ class EditorActivity : ComponentActivity() {
             // a running request nor drops a finished result.
             val aiSession = remember { AiSessionState(this@EditorActivity, scope) }
 
+            onHistoryChanged = { list ->
+                history = list
+                historyIndex = 0
+            }
+            // A newly opened picture (shared from another app, picked, or the AI base) writes
+            // its own history row straight away, so nothing the user touched ever goes missing.
+            LaunchedEffect(ui.loading, vm.source) {
+                if (ui.loading || vm.source == null) return@LaunchedEffect
+                if (currentSessionId != null) return@LaunchedEffect
+                delay(400)
+                val entry = autosave(force = true)
+                if (entry != null) refreshHistory()
+            }
             suspend fun refreshHistory() {
                 history = HistoryStore.list(ctx)
+                val id = currentSessionId
+                historyIndex = if (id == null) -1 else history.indexOfFirst { it.id == id }
             }
             LaunchedEffect(ui.savedTick) { refreshHistory() }
             LaunchedEffect(Unit) { refreshHistory() }
@@ -291,6 +312,23 @@ class EditorActivity : ComponentActivity() {
                                     refreshHistory()
                                 }
                             },
+                            historyCurrent = historyIndex,
+                            onStepHistory = { entry ->
+                                val snapshot = HistoryStore.snapshotOf(ctx, entry)
+                                if (snapshot == null) {
+                                    Toast.makeText(this@EditorActivity, R.string.open_failed, Toast.LENGTH_SHORT).show()
+                                } else {
+                                    lifecycleScope.launch {
+                                        val file = HistoryStore.filesOf(ctx, entry).source
+                                        vm.openAndRestore(snapshot) {
+                                            ImageLoader.loadFile(this@EditorActivity, file)
+                                        }
+                                        vm.source?.let { vm.useBase(it, file) }
+                                        currentSessionId = entry.id
+                                        historyIndex = history.indexOfFirst { it.id == entry.id }
+                                    }
+                                }
+                            },
                             onOpenHistory = { entry ->
                                 val snapshot = HistoryStore.snapshotOf(ctx, entry)
                                 if (snapshot == null) {
@@ -308,6 +346,7 @@ class EditorActivity : ComponentActivity() {
                                         vm.source?.let { vm.useBase(it, file) }
                                         // reopening an entry keeps writing to the same row
                                         currentSessionId = entry.id
+                                        historyIndex = history.indexOfFirst { it.id == entry.id }
                                     }
                                 }
                             },
@@ -352,6 +391,11 @@ class EditorActivity : ComponentActivity() {
                             onScaleMode = vm::setScaleMode,
                             onRotatePreview = vm::previewRotation,
                             onRotateCommit = vm::commitRotation,
+                            onResetEdits = {
+                                vm.resetEdits()
+                                haptics.tick()
+                                Toast.makeText(this@EditorActivity, R.string.reset_edits_done, Toast.LENGTH_SHORT).show()
+                            },
                             onResetAll = {
                                 vm.resetAll()
                                 haptics.tick()
@@ -507,6 +551,7 @@ class EditorActivity : ComponentActivity() {
     private fun openUri(uri: Uri) {
         // a new picture starts its own history row (autosave then updates that row in place)
         currentSessionId = null
+        historyIndex = -1
         vm.loadImage { ImageLoader.load(this, uri) }
     }
 
@@ -588,8 +633,10 @@ class EditorActivity : ComponentActivity() {
      */
     private suspend fun autosave(force: Boolean = false): HistoryEntry? = withContext(NonCancellable) {
         val bmp = vm.source ?: return@withContext null
-        // Default preview / "reset to original" is not worth a history row.
-        if (!vm.hasRealEdits()) return@withContext null
+        // A brand new picture gets one row even before any edit (requirement: every shared
+        // picture lands in history). Later autosaves only run for real edits.
+        val firstRow = currentSessionId == null
+        if (!firstRow && !vm.hasRealEdits()) return@withContext null
         // What the row shows must be what the user sees: the edited picture. The state is
         // stored alongside it, so reopening a row restores the same look (and AI still gets
         // the untouched base from vm.aiSource()).
@@ -613,6 +660,39 @@ class EditorActivity : ComponentActivity() {
     private suspend fun recordHistory() {
         autosave(force = true)
     }
+
+    /**
+     * Records the picture that was just shared/saved as its own history row. It must be the
+     * SAME bytes the user sent out (no second render, no drift), so the bitmap is written
+     * straight to the row instead of being re-rendered from the state.
+     */
+    private suspend fun recordRendered(rendered: android.graphics.Bitmap): HistoryEntry? =
+        withContext(NonCancellable) {
+            val file = withContext(Dispatchers.IO) {
+                runCatching {
+                    val dir = java.io.File(filesDir, "rendered").apply { mkdirs() }
+                    val out = java.io.File(dir, "out_${System.currentTimeMillis()}.jpg")
+                    out.outputStream().use {
+                        rendered.compress(android.graphics.Bitmap.CompressFormat.JPEG, 94, it)
+                    }
+                    out
+                }.getOrNull()
+            }
+            val entry = HistoryStore.record(
+                context = this@EditorActivity,
+                bitmap = rendered,
+                state = vm.currentState(),
+                theme = sessionTheme,
+                sourceFile = file,
+                sessionId = null,
+            )
+            if (entry != null) {
+                currentSessionId = entry.id
+                vm.markSaved()
+                onHistoryChanged(HistoryStore.list(this@EditorActivity))
+            }
+            entry
+        }
 
     /** True when this Activity was opened by "+" in the app (no shared picture). */
     private fun isFreshOpen(): Boolean {
@@ -643,13 +723,18 @@ class EditorActivity : ComponentActivity() {
                 Toast.makeText(this@EditorActivity, R.string.save_failed, Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            runCatching { Exporter.saveToGallery(this@EditorActivity, out, png = false) }
+            val saved = runCatching { Exporter.saveToGallery(this@EditorActivity, out, png = false) }
                 .onSuccess { vm.reportSaved() }
                 .onFailure {
                     Toast.makeText(this@EditorActivity, R.string.save_failed, Toast.LENGTH_SHORT).show()
                 }
+                .isSuccess
+            if (saved) {
+                // the picture the user just saved becomes a history row of its own, and that
+                // row stores exactly this rendered file (not a second render)
+                recordRendered(out)
+            }
             out.recycle()
-            recordHistory()
         }
     }
 
@@ -660,8 +745,12 @@ class EditorActivity : ComponentActivity() {
             return
         }
         val uri = runCatching { Exporter.writeShareCopy(this, out) }.getOrNull()
-        out.recycle()
-        lifecycleScope.launch { recordHistory() }
+        // shared picture = a history row holding the rendered file. The bitmap is recycled
+        // inside the coroutine, after it was written.
+        lifecycleScope.launch {
+            recordRendered(out)
+            runCatching { out.recycle() }
+        }
         if (uri == null) {
             Toast.makeText(this, R.string.share_failed, Toast.LENGTH_SHORT).show()
             return

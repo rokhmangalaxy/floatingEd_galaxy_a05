@@ -87,8 +87,8 @@
     <string name="theme_maroon">Pastel Maroon</string>
     <string name="theme_dialog_title">Appearance</string>
     <string name="panel_rotate_hint">Drag to rotate freely. Snaps to 0° / 90° / 180° / 270° with a haptic tick.</string>
-    <string name="panel_reset_title">Reset all</string>
-    <string name="panel_reset_hint">Return to the original picture: ratio, position, zoom, rotation, mirror, background, frame and text.</string>
+    <string name="panel_reset_title">Reset</string>
+    <string name="panel_reset_hint">Clear the edits on this picture, or go back to the original picture.</string>
     <string name="action_reset_all">Reset to original</string>
     <string name="reset_done">Picture restored to original</string>
     <string name="bubble_failed">Could not create the bubble. Check "Display over other apps" permission and try again.</string>
@@ -132,5 +132,8 @@
     <string name="commit_edit_done">Result added to history</string>
     <string name="commit_edit_failed">Could not save the result</string>
     <string name="ai_quota">IP %3$s · %1$d/%2$d runs today</string>
-    <string name="ai_quota_full">IP %1$s · 3 per 24 h used, %2$d h left</string>
+    <string name="ai_quota_full">IP %1$s · allowance used, %2$d h left</string>
+    <string name="ai_quota_recheck">Check IP</string>
+    <string name="action_reset_edits">Reset edits</string>
+    <string name="reset_edits_done">Edits cleared, picture kept</string>
 </resources>

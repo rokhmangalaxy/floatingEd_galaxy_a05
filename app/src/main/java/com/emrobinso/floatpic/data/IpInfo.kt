@@ -16,11 +16,16 @@ object IpInfo {
     private var cachedAt: Long = 0L
     private const val TTL_MS = 60 * 60 * 1000L
 
-    /** Blocking; call from a background dispatcher. Returns null when offline. */
-    fun lookup(): String? {
+    /**
+     * Blocking; call from a background dispatcher. Returns null when offline.
+     *
+     * [refresh] forces a new lookup — needed when the user switched network/IP on purpose,
+     * where a cached answer would show the old address and the old allowance.
+     */
+    fun lookup(refresh: Boolean = false): String? {
         val now = System.currentTimeMillis()
         val hit = cachedIp
-        if (hit != null && now - cachedAt < TTL_MS) return hit
+        if (!refresh && hit != null && now - cachedAt < TTL_MS) return hit
 
         // two independent services, whichever answers first with something IP-shaped
         val endpoints = listOf(
