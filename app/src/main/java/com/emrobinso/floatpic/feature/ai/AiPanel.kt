@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -48,6 +50,9 @@ import androidx.compose.ui.unit.sp
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.data.AiBackend
 import com.emrobinso.floatpic.data.AiEditClient
+import com.emrobinso.floatpic.data.AiQuota
+import com.emrobinso.floatpic.data.IpInfo
+import com.emrobinso.floatpic.ui.icons.FloatIcons
 import com.emrobinso.floatpic.data.AiPromptStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -76,6 +81,14 @@ class AiSessionState(
     var lora by mutableStateOf<String?>(null)
     var backend by mutableStateOf(AiBackend.of(AiPromptStore.backend(context)))
         private set
+
+    /** "2/3 hari ini" for the current IP; null for backends without a known limit */
+    var quota by mutableStateOf<AiQuota.State?>(null)
+        private set
+
+    fun refreshQuota() {
+        quota = AiQuota.state(context)
+    }
     var busy by mutableStateOf(false)
         private set
     var stage by mutableStateOf("")
@@ -83,8 +96,6 @@ class AiSessionState(
     var error by mutableStateOf<String?>(null)
         private set
     var elapsed by mutableStateOf(0)
-        private set
-    var showLog by mutableStateOf(false)
         private set
 
     /** newest first; the first one is what the editor is currently showing */
@@ -97,6 +108,9 @@ class AiSessionState(
         private set
 
     private var job: Job? = null
+
+    /** last file handed to run(); keeps the signature stable for the UI */
+    private var baseFileHint: java.io.File? = null
     private var resultCallback: ((Bitmap) -> Unit)? = null
 
     private fun note(line: String) {
@@ -107,10 +121,6 @@ class AiSessionState(
     }
 
     fun logText(): String = log.joinToString("\n")
-
-    fun toggleLog() {
-        showLog = !showLog
-    }
 
     fun cancel(info: (String) -> Unit) {
         job?.cancel()
@@ -143,12 +153,14 @@ class AiSessionState(
         correction: String?,
         onApply: (Bitmap) -> Unit,
         onInfo: (String) -> Unit,
+        file: java.io.File? = null,
     ) {
         val bmp = source
         if (bmp == null) {
             onInfo(context.getString(R.string.open_failed))
             return
         }
+        baseFileHint = file
         if (prompt.isBlank()) {
             onInfo(context.getString(R.string.ai_no_prompt))
             return
@@ -169,9 +181,19 @@ class AiSessionState(
 
         // running on the ACTIVITY scope: leaving the AI menu must not cancel the request
         job = scope.launch {
+            // send the ORIGINAL base file at (near) full size, not the downsampled preview:
+            // the space resizes to ~1 MP anyway, but a clean large source keeps detail
+            val send = baseFileHint?.takeIf { it.exists() }?.let { f ->
+                runCatching {
+                    com.emrobinso.floatpic.core.image.ImageLoader.loadFile(
+                        context, f, targetMax = 3072,
+                    ).bitmap
+                }.getOrNull()
+            } ?: bmp
+            note("kirim ${send.width}x${send.height} (${if (baseFileHint != null) "base asli" else "base memori"})")
             val res = AiEditClient.edit(
                 backend = backend,
-                source = bmp,
+                source = send,
                 prompt = sentPrompt,
                 lora = lora,
                 correction = correction,
@@ -182,6 +204,13 @@ class AiSessionState(
             job = null
             when (res) {
                 is AiEditClient.Result.Ok -> {
+                    // a finished run is one unit of the per-IP allowance
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        val ip = IpInfo.lookup()
+                        AiQuota.record(context, ip)
+                        note("kuota: percobaan ke-${AiQuota.state(context).used} untuk IP ${ip ?: "?"}")
+                    }
+                    refreshQuota()
                     results.add(0, AiCandidate(res.bitmap, sentPrompt, lora))
                     note("sukses: ${res.bitmap.width}x${res.bitmap.height}, ${results.size} hasil")
                     resultCallback?.invoke(res.bitmap)
@@ -215,13 +244,17 @@ class AiSessionState(
 @Composable
 fun AiPanel(
     session: AiSessionState,
-    source: Bitmap?,
+    base: Bitmap?,
+    baseFile: java.io.File?,
     onApply: (Bitmap) -> Unit,
     onInfo: (String) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     val clipboard = LocalClipboardManager.current
+
+    // count for this IP is read when the panel opens and after every finished run
+    LaunchedEffect(Unit) { session.refreshQuota() }
 
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -230,19 +263,6 @@ fun AiPanel(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
                 color = scheme.onSurface,
-            )
-            Spacer(Modifier.weight(1f))
-            // log toggle: the only way to see why a request did nothing
-            Text(
-                ctx.getString(if (session.showLog) R.string.ai_log_hide else R.string.ai_log_show),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = scheme.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(scheme.primary.copy(alpha = .12f))
-                    .clickable { session.toggleLog() }
-                    .padding(horizontal = 9.dp, vertical = 4.dp),
             )
         }
         Spacer(Modifier.height(5.dp))
@@ -270,33 +290,54 @@ fun AiPanel(
         }
         Spacer(Modifier.height(6.dp))
 
-        // prompt box: TWO lines, no auto-focus (opening the panel must not pop the keyboard)
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(scheme.surface)
-                .border(1.dp, scheme.outline.copy(.5f), RoundedCornerShape(11.dp))
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            contentAlignment = Alignment.TopStart,
-        ) {
-            if (session.prompt.isEmpty()) {
-                Text(
-                    ctx.getString(R.string.panel_ai_hint),
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    color = scheme.onSurfaceVariant.copy(.55f),
+        // prompt box: TWO lines, no auto-focus (opening the panel must not pop the keyboard).
+        // Paste is a one-tap icon on the right, like in the text panel: the field cannot be
+        // long-pressed reliably while it holds a placeholder.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(scheme.surface)
+                    .border(1.dp, scheme.outline.copy(.5f), RoundedCornerShape(11.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                contentAlignment = Alignment.TopStart,
+            ) {
+                if (session.prompt.isEmpty()) {
+                    Text(
+                        ctx.getString(R.string.panel_ai_hint),
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        color = scheme.onSurfaceVariant.copy(.55f),
+                    )
+                }
+                BasicTextField(
+                    value = session.prompt,
+                    onValueChange = { if (it.length <= 150) session.prompt = it },
+                    singleLine = false,
+                    maxLines = 2,
+                    textStyle = TextStyle(fontSize = 12.sp, color = scheme.onSurface, lineHeight = 15.sp),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
-            BasicTextField(
-                value = session.prompt,
-                onValueChange = { if (it.length <= 150) session.prompt = it },
-                singleLine = false,
-                maxLines = 2,
-                textStyle = TextStyle(fontSize = 12.sp, color = scheme.onSurface, lineHeight = 15.sp),
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Spacer(Modifier.width(6.dp))
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(scheme.primary.copy(alpha = .14f))
+                    .border(1.dp, scheme.primary.copy(alpha = .5f), RoundedCornerShape(11.dp))
+                    .semantics { contentDescription = ctx.getString(R.string.action_paste) }
+                    .clickable {
+                        val pasted = clipboard.getText()?.text
+                            ?.replace("\n", " ")?.trim()
+                        if (!pasted.isNullOrBlank()) session.prompt = pasted.take(150)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                FloatIcons.Paste(tint = scheme.primary)
+            }
         }
 
         if (session.prompts.isNotEmpty()) {
@@ -313,17 +354,40 @@ fun AiPanel(
             }
         }
 
+        // The LoRA row is only useful when the server offers styles. Rapid-AIO also has a
+        // real "None", so the first chip genuinely means "no style".
         Spacer(Modifier.height(6.dp))
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            LoraChip(ctx.getString(R.string.ai_lora_none), session.lora == null) {
-                session.lora = null
+            if (session.backend.noStyle != null) {
+                LoraChip(
+                    label = ctx.getString(R.string.ai_lora_none),
+                    active = session.lora == null,
+                ) { session.lora = null }
             }
             session.backend.loras.forEach { id ->
                 LoraChip(label = id, active = session.lora == id) { session.lora = id }
             }
+        }
+
+        // per-IP allowance: the public Space gives ~3 runs per IP per 24 h, so say where
+        // this device stands BEFORE the user spends one
+        session.quota?.let { q ->
+            val ip = q.ip ?: "-"
+            val left = q.remaining
+            val windowH = (q.windowLeftMs / (60 * 60 * 1000L)).toInt()
+            Text(
+                if (left > 0) {
+                    ctx.getString(R.string.ai_quota, q.used, AiQuota.LIMIT, ip)
+                } else {
+                    ctx.getString(R.string.ai_quota_full, ip, windowH)
+                },
+                fontSize = 9.sp,
+                color = if (left > 0) scheme.onSurfaceVariant else scheme.error,
+            )
+            Spacer(Modifier.height(4.dp))
         }
 
         Spacer(Modifier.height(7.dp))
@@ -334,7 +398,7 @@ fun AiPanel(
             RunChip(
                 label = ctx.getString(R.string.ai_run),
                 enabled = !session.busy,
-                onClick = { session.run(source, null, onApply, onInfo) },
+                onClick = { session.run(base, null, onApply, onInfo, baseFile) },
             )
             if (session.busy) {
                 CircularProgressIndicator(
@@ -365,10 +429,11 @@ fun AiPanel(
                     enabled = true,
                     onClick = {
                         session.run(
-                            source,
+                            base,
                             "keep the composition, improve on the previous attempt",
                             onApply,
                             onInfo,
+                            baseFile,
                         )
                     },
                 )
@@ -380,55 +445,6 @@ fun AiPanel(
                     fontSize = 9.sp,
                     maxLines = 2,
                     color = scheme.error,
-                )
-            }
-        }
-
-        if (session.showLog) {
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    ctx.getString(R.string.ai_log_title),
-                    fontSize = 10.sp,
-                    color = scheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    ctx.getString(R.string.ai_log_copy),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = scheme.primary,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(scheme.primary.copy(alpha = .12f))
-                        .clickable {
-                            clipboard.setText(AnnotatedString(session.logText()))
-                            onInfo(ctx.getString(R.string.ai_log_copied))
-                        }
-                        .padding(horizontal = 9.dp, vertical = 4.dp),
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 132.dp)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(scheme.surfaceVariant.copy(alpha = .55f))
-                    .border(1.dp, scheme.outline.copy(.35f), RoundedCornerShape(9.dp))
-                    .padding(7.dp),
-            ) {
-                val scroll = rememberScrollState()
-                LaunchedEffect(session.log.size) { scroll.scrollTo(scroll.maxValue) }
-                Text(
-                    text = if (session.log.isEmpty()) "—" else session.logText(),
-                    fontSize = 8.5.sp,
-                    lineHeight = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = scheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(scroll),
                 )
             }
         }

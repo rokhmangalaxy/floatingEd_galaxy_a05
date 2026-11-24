@@ -128,4 +128,9 @@
     <string name="ai_log_copied">Log copied to clipboard</string>
     <string name="panel_ai_hint_short">The newest result replaces the picture; tap an older one to go back.</string>
     <string name="ai_server">Server</string>
+    <string name="action_commit_edit">Save result</string>
+    <string name="commit_edit_done">Result added to history</string>
+    <string name="commit_edit_failed">Could not save the result</string>
+    <string name="ai_quota">IP %3$s · %1$d/%2$d runs today</string>
+    <string name="ai_quota_full">IP %1$s · 3 per 24 h used, %2$d h left</string>
 </resources>

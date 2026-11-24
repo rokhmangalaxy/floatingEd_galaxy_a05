@@ -142,6 +142,7 @@ fun EditorScreen(
     onCommit: (Transform) -> Unit,
     onSave: () -> Unit,
     onShare: () -> Unit,
+    onCommitEdit: () -> Unit,
     onReset: () -> Unit,
     onAlign: (Float, Float) -> Unit,
     onPadding: (Float) -> Unit,
@@ -162,6 +163,10 @@ fun EditorScreen(
     onTextRotationPreview: (Float) -> Unit,
     onTextRotationCommit: (Float) -> Unit,
     aiSession: com.emrobinso.floatpic.feature.ai.AiSessionState,
+    /** the picture AI edits: the session base, never an AI result */
+    aiBase: () -> Bitmap?,
+    /** file behind that base, so it can be decoded at full size */
+    aiBaseFile: () -> java.io.File?,
     onAiApply: (Bitmap) -> Unit,
     onInfo: (String) -> Unit,
     onPickImage: () -> Unit,
@@ -282,6 +287,8 @@ fun EditorScreen(
                                 tool = tool,
                                 state = state,
                                 bitmap = bitmap,
+                                aiBase = aiBase,
+                                aiBaseFile = aiBaseFile,
                                 haptics = haptics,
                                 history = history,
                                 guidesOn = guides,
@@ -325,7 +332,7 @@ fun EditorScreen(
                 onTool = { haptics.tick(); tool = if (tool == it) Tool.NONE else it },
             )
 
-            ActionBar(onSave = onSave, onShare = onShare)
+            ActionBar(onSave = onSave, onShare = onShare, onCommitEdit = onCommitEdit)
         }
     }
 }
@@ -569,7 +576,11 @@ private fun ToolButton(
 }
 
 @Composable
-private fun ActionBar(onSave: () -> Unit, onShare: () -> Unit) {
+private fun ActionBar(
+    onSave: () -> Unit,
+    onShare: () -> Unit,
+    onCommitEdit: () -> Unit,
+) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     Row(
@@ -605,6 +616,28 @@ private fun ActionBar(onSave: () -> Unit, onShare: () -> Unit) {
             FloatIcons.Share(tint = scheme.onPrimary)
             Spacer(Modifier.width(8.dp))
             Text(ctx.getString(R.string.action_share), color = scheme.onPrimary, fontWeight = FontWeight.SemiBold)
+        }
+        // writes the CURRENT look into history as its own entry. Without this the only row
+        // was the original picture, so an AI result was never kept as something to reopen.
+        Row(
+            Modifier
+                .weight(1f)
+                .height(46.dp)
+                .clip(RoundedCornerShape(15.dp))
+                .border(1.5.dp, scheme.onSurface.copy(alpha = .35f), RoundedCornerShape(15.dp))
+                .clickable(onClick = onCommitEdit),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            FloatIcons.History(tint = scheme.onSurface)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                ctx.getString(R.string.action_commit_edit),
+                color = scheme.onSurface,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
         }
     }
 }
@@ -765,6 +798,10 @@ private fun OverlayPanel(
     onTextRotationPreview: (Float) -> Unit,
     onTextRotationCommit: (Float) -> Unit,
     aiSession: com.emrobinso.floatpic.feature.ai.AiSessionState,
+    /** the picture AI edits: the session base, never an AI result */
+    aiBase: () -> Bitmap?,
+    /** file behind that base, so it can be decoded at full size */
+    aiBaseFile: () -> java.io.File?,
     onAiApply: (Bitmap) -> Unit,
     onInfo: (String) -> Unit,
     onDone: () -> Unit,
@@ -930,7 +967,8 @@ private fun OverlayPanel(
 
             Tool.AI -> AiPanel(
                 session = aiSession,
-                source = bitmap,
+                base = aiBase(),
+                baseFile = aiBaseFile(),
                 onApply = onAiApply,
                 onInfo = onInfo,
             )

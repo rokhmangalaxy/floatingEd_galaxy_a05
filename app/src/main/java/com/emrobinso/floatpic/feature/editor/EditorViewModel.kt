@@ -49,6 +49,17 @@ class EditorViewModel : ViewModel() {
     var sourceFile: java.io.File? = null
         private set
 
+    /**
+     * The picture as it was when this session opened: the original file / shared image, NOT
+     * an AI result. AI always sends this one, so a second prompt does not feed the model its
+     * own output (which compounded artefacts and lost the original framing).
+     */
+    var baseSource: Bitmap? = null
+        private set
+
+    /** File behind [baseSource], re-read at full size on demand. */
+    private var baseFile: java.io.File? = null
+
     private val undo = ArrayDeque<EditorState>()
     private val redo = ArrayDeque<EditorState>()
     private var committed: EditorState = EditorState()
@@ -67,6 +78,12 @@ class EditorViewModel : ViewModel() {
                 .onSuccess { loaded ->
                     source?.recycle()
                     source = loaded.bitmap
+                    // a newly opened picture is its own base
+                    if (baseSource !== loaded.bitmap) {
+                        baseSource?.recycle()
+                        baseSource = loaded.bitmap
+                        baseFile = loaded.cacheFile
+                    }
                     // The loader already bakes EXIF rotation into the bitmap, so the
                     // source is upright: using the EXIF angle again would swap w/h and
                     // make the preview ratio disagree with the exported file.
@@ -99,6 +116,24 @@ class EditorViewModel : ViewModel() {
         loadImageNow(loader)
         restore(snapshot)
     }
+
+    /** A restored session is based on the file it was saved with. */
+    fun useBase(bitmap: Bitmap, file: java.io.File?) {
+        if (baseSource !== bitmap) {
+            if (baseSource !== source) baseSource?.recycle()
+            baseSource = bitmap
+        }
+        baseFile = file
+    }
+
+    /** File behind the session base, so a caller can decode it at full size. */
+    fun baseFile(): java.io.File? = baseFile
+
+    /**
+     * The picture AI should edit: the session base (never an AI result).
+     * Falls back to the live source only when no base was recorded.
+     */
+    fun aiSource(): Bitmap? = baseSource ?: source
 
     /**
      * Re-applies saved edits. The palette is NOT taken from the snapshot: opening an old
@@ -341,6 +376,9 @@ class EditorViewModel : ViewModel() {
 
     fun bubbleThumb(): Bitmap? = source?.let { EditorRenderer.bubbleThumb(it) }
 
+    /** Snapshot of the editing base without any AI result, for the history row. */
+    fun baseForHistory(): Bitmap? = baseSource ?: source
+
     /** Records a source file that was created outside the loader (bubble session). */
     fun attachSourceFile(file: java.io.File) {
         sourceFile = file
@@ -354,5 +392,7 @@ class EditorViewModel : ViewModel() {
         super.onCleared()
         source?.recycle()
         source = null
+        if (baseSource !== source) baseSource?.recycle()
+        baseSource = null
     }
 }

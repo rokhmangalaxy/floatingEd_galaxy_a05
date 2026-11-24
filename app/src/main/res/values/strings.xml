@@ -128,4 +128,9 @@
     <string name="ai_log_copied">Log disalin ke clipboard</string>
     <string name="panel_ai_hint_short">Hasil terbaru langsung menggantikan gambar; hasil lama bisa di-tap.</string>
     <string name="ai_server">Server</string>
+    <string name="action_commit_edit">Simpan hasil</string>
+    <string name="commit_edit_done">Hasil edit masuk riwayat</string>
+    <string name="commit_edit_failed">Gagal menyimpan hasil edit</string>
+    <string name="ai_quota">IP %3$s · %1$d/%2$d generate hari ini</string>
+    <string name="ai_quota_full">IP %1$s · kuota 3x/24 jam habis, sisa %2$d jam</string>
 </resources>

@@ -362,6 +362,20 @@ class EditorActivity : ComponentActivity() {
                             onPreview = vm::previewTransform,
                             onCommit = vm::commitTransform,
                             onSave = { saveToGallery(scope) },
+                            onCommitEdit = {
+                                scope.launch {
+                                    // one row per deliberate save-as-result, so the edited
+                                    // picture becomes its own thing to reopen
+                                    currentSessionId = null
+                                    val entry = autosave(force = true)
+                                    refreshHistory()
+                                    Toast.makeText(
+                                        this@EditorActivity,
+                                        if (entry != null) R.string.commit_edit_done else R.string.commit_edit_failed,
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            },
                             onShare = { shareNow() },
                             onReset = vm::resetTransform,
                             onAlign = vm::alignTo,
@@ -387,6 +401,8 @@ class EditorActivity : ComponentActivity() {
                             onTextRotationPreview = vm::previewTextRotation,
                             onTextRotationCommit = vm::commitTextRotation,
                             aiSession = aiSession,
+                            aiBase = { vm.aiSource() },
+                            aiBaseFile = { vm.baseFile() },
                             onAiApply = { bmp ->
                                 // last AI result wins: it becomes the working picture, and
                                 // undo takes you straight back to the previous one.
@@ -595,10 +611,13 @@ class EditorActivity : ComponentActivity() {
         val bmp = vm.source ?: return@withContext null
         // Default preview / "reset to original" is not worth a history row.
         if (!vm.hasRealEdits()) return@withContext null
+        // history stores the BASE picture + the edit state, so reopening a row always gives
+        // the original back (and the AI keeps sending that original, never its own output)
+        val rowBitmap = vm.baseForHistory() ?: bmp
         if (!force && !vm.isDirty()) return@withContext null
         val entry = HistoryStore.record(
             context = this@EditorActivity,
-            bitmap = bmp,
+            bitmap = rowBitmap,
             state = vm.currentState(),
             theme = sessionTheme,
             sourceFile = vm.sourceFile,
