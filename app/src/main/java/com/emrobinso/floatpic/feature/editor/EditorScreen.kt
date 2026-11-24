@@ -161,6 +161,7 @@ fun EditorScreen(
     onTextAnchor: (TextAnchor) -> Unit,
     onTextRotationPreview: (Float) -> Unit,
     onTextRotationCommit: (Float) -> Unit,
+    aiSession: com.emrobinso.floatpic.feature.ai.AiSessionState,
     onAiApply: (Bitmap) -> Unit,
     onInfo: (String) -> Unit,
     onPickImage: () -> Unit,
@@ -305,6 +306,7 @@ fun EditorScreen(
                                 onTextAnchor = onTextAnchor,
                                 onTextRotationPreview = onTextRotationPreview,
                                 onTextRotationCommit = onTextRotationCommit,
+                                aiSession = aiSession,
                                 onAiApply = onAiApply,
                                 onInfo = onInfo,
                                 onDone = { tool = Tool.NONE },
@@ -762,6 +764,7 @@ private fun OverlayPanel(
     onTextAnchor: (TextAnchor) -> Unit,
     onTextRotationPreview: (Float) -> Unit,
     onTextRotationCommit: (Float) -> Unit,
+    aiSession: com.emrobinso.floatpic.feature.ai.AiSessionState,
     onAiApply: (Bitmap) -> Unit,
     onInfo: (String) -> Unit,
     onDone: () -> Unit,
@@ -926,6 +929,7 @@ private fun OverlayPanel(
             }
 
             Tool.AI -> AiPanel(
+                session = aiSession,
                 source = bitmap,
                 onApply = onAiApply,
                 onInfo = onInfo,

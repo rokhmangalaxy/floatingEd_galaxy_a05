@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -26,20 +27,26 @@ import kotlin.math.max
  * Client for the public Gradio Space
  * `prithivmlmods/Qwen-Image-Edit-2511-LoRAs-Fast`.
  *
- * Guest mode: no token. The space may be asleep, which shows up as a slow first request or
- * an HTTP 503 — both are surfaced as a readable message instead of a silent failure.
+ * The space is a `gradio.Server` (not Blocks), and the *only* documented way its own web UI
+ * talks to `edit_image` is through the Gradio JS client. That client does:
  *
- * Flow (from the space's agents.md + app.py):
- *   POST /gradio_api/call/v2/edit_image  {images_b64_json, prompt, lora_adapter, seed,
- *                                        randomize_seed, guidance_scale, steps}
- *   -> {"event_id": "..."}
- *   GET  /gradio_api/call/edit_image/{event_id}   (SSE lines: "data: {...}")
+ *   1. `POST /gradio_api/call/edit_image`
+ *      body: `{"data": [images_b64_json, prompt, lora_adapter, seed, randomize_seed,
+ *                       guidance_scale, steps], "session_hash": "..."}`
+ *      -> `{"event_id": "..."}`
+ *   2. `GET /gradio_api/call/edit_image/{event_id}`  (SSE)
+ *      `event: generating` + `data: {...}`      progress / queue position
+ *      `event: complete`   + `data: [ {...} ]`  the return value, a list with one dict
+ *      `event: error`      + `data: {...}`      failure
+ *
+ * The earlier version posted a *named object* to a `.../call/v2/...` endpoint. The space
+ * answered, but nothing ever arrived as a `complete` event, so the UI span forever — which
+ * is exactly the bug reported. Everything below follows the JS client now.
  */
 object AiEditClient {
 
     private const val BASE = "https://prithivmlmods-qwen-image-edit-2511-loras-fast.hf.space"
-    private const val CALL = "$BASE/gradio_api/call/v2/edit_image"
-    private const val POLL = "$BASE/gradio_api/call/edit_image"
+    private const val CALL = "$BASE/gradio_api/call/edit_image"
 
     /** LoRA ids exposed by the space (used as "gaya" in the panel). */
     val LORAS = listOf(
@@ -48,7 +55,10 @@ object AiEditClient {
         "Ultra-Realistic-Portrait", "Multiple-Angles",
     )
 
-    private val json = Json { ignoreUnknownKeys = true }
+    /** Adapter id used when the user picks "Tanpa gaya" (the space has no "None"). */
+    const val DEFAULT_LORA = "Unblur-Anything"
+
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val seedCounter = AtomicInteger(1)
 
     sealed class Result {
@@ -57,8 +67,11 @@ object AiEditClient {
     }
 
     /**
-     * Runs one edit. [correction] is appended as a "hint" so a re-run after a bad result
-     * says what was wrong ("too dark", "keep the face") instead of re-rolling blindly.
+     * Runs one edit.
+     *
+     * @param onStage human-readable progress ("antrean 3", "membuat 40%"), shown next to
+     *                the timer so a long queue never looks frozen
+     * @param onLog   every transport step, so the user can copy a readable trace
      */
     suspend fun edit(
         source: Bitmap,
@@ -66,6 +79,7 @@ object AiEditClient {
         lora: String?,
         correction: String? = null,
         onStage: (String) -> Unit = {},
+        onLog: (String) -> Unit = {},
     ): Result = withContext(Dispatchers.IO) {
         runCatching {
             val effective = buildString {
@@ -76,41 +90,60 @@ object AiEditClient {
             }
             if (effective.isBlank()) return@runCatching Result.Failed("prompt kosong")
 
-            onStage("upload")
+            onStage("menyiapkan gambar")
+            onLog("POST $CALL")
             val b64 = encode(source)
+            onLog("gambar ${source.width}x${source.height} -> ${b64.length / 1024} KB base64")
+
+            // NOTE: positional array. This is what the Gradio client sends, and the order
+            // must match the python signature exactly.
             val payload = buildJsonObject {
-                put("images_b64_json", buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive(b64)) }.toString())
-                put("prompt", effective)
-                // the space always needs an adapter id (it has no "None"), so a plain
-                // prompt run uses the least stylising one available
-                put("lora_adapter", lora ?: "Unblur-Anything")
-                put("seed", seedCounter.incrementAndGet())
-                put("randomize_seed", true)
-                put("guidance_scale", 4.0)
-                put("steps", 4)
+                put(
+                    "data",
+                    buildJsonArray {
+                        add(JsonPrimitive(buildJsonArray { add(JsonPrimitive(b64)) }.toString()))
+                        add(JsonPrimitive(effective))
+                        add(JsonPrimitive(lora ?: DEFAULT_LORA))
+                        add(JsonPrimitive(seedCounter.incrementAndGet()))
+                        add(JsonPrimitive(true))
+                        add(JsonPrimitive(4.0))
+                        add(JsonPrimitive(4))
+                    },
+                )
+                put("session_hash", java.util.UUID.randomUUID().toString().replace("-", "").take(11))
             }.toString()
 
-            onStage("generate")
-            val eventId = postJson(CALL, payload)
+            val eventId = postJson(CALL, payload, onLog)
                 ?: return@runCatching Result.Failed("server tidak mengembalikan event id")
+            onLog("event_id=$eventId")
 
-            val resultJson = poll(POLL + "/" + eventId)
-                ?: return@runCatching Result.Failed("tidak ada balasan dari server")
+            onStage("menunggu antrean")
+            val outcome = poll("$CALL/$eventId", onStage, onLog)
 
-            // payload: {"image": "data:image/png;base64,...", "status": "success", ...}
-            val status = resultJson["status"]?.jsonPrimitive?.safeContent()
-            if (status != null && status != "success") {
-                val msg = resultJson["message"]?.jsonPrimitive?.safeContent()
-                return@runCatching Result.Failed(msg ?: status)
+            when (outcome) {
+                is Poll.Done -> {
+                    val data = outcome.value
+                    val status = data["status"]?.jsonPrimitive?.safeContent()
+                    if (status != null && status != "success") {
+                        val msg = data["message"]?.jsonPrimitive?.safeContent()
+                        onLog("status=$status ${msg.orEmpty()}")
+                        return@runCatching Result.Failed(msg ?: status)
+                    }
+                    val dataUrl = data["image"]?.jsonPrimitive?.safeContent()
+                        ?: return@runCatching Result.Failed("hasil kosong")
+                    onLog("gambar hasil: ${dataUrl.take(40)}… (${dataUrl.length / 1024} KB)")
+                    val raw = dataUrl.substringAfter(',', dataUrl)
+                    val bytes = Base64.decode(raw, Base64.DEFAULT)
+                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        ?: return@runCatching Result.Failed("gambar hasil tidak valid")
+                    onLog("selesai ${bmp.width}x${bmp.height}")
+                    Result.Ok(bmp)
+                }
+                is Poll.Error -> Result.Failed(outcome.message)
+                Poll.Timeout -> Result.Failed("server tidak selesai dalam 5 menit")
             }
-            val dataUrl = resultJson["image"]?.jsonPrimitive?.safeContent()
-                ?: return@runCatching Result.Failed("hasil kosong")
-            val raw = dataUrl.substringAfter(',', dataUrl)
-            val bytes = Base64.decode(raw, Base64.DEFAULT)
-            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                ?: return@runCatching Result.Failed("gambar hasil tidak valid")
-            Result.Ok(bmp)
         }.getOrElse { e ->
+            onLog("exception: ${e::class.java.simpleName}: ${e.message}")
             Result.Failed(friendly(e))
         }
     }
@@ -127,7 +160,6 @@ object AiEditClient {
     // -- transport ---------------------------------------------------------------------
 
     private fun encode(bitmap: Bitmap): String {
-        // the space resizes to <=1024 on the long side; sending more only wastes upload time
         val long = max(bitmap.width, bitmap.height)
         val scale = if (long > 1024) 1024f / long else 1f
         val scaled = if (scale < 1f) {
@@ -146,7 +178,7 @@ object AiEditClient {
         return Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
     }
 
-    private fun postJson(url: String, body: String): String? {
+    private fun postJson(url: String, body: String, onLog: (String) -> Unit): String? {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 30_000
@@ -160,25 +192,36 @@ object AiEditClient {
             val code = conn.responseCode
             val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) {
-                throw IOException("HTTP $code ${text.take(160)}")
-            }
-            // v2 answers {"event_id": "..."}; older builds answered a bare ""evt""
+            onLog("HTTP $code ${text.take(180).replace('\n', ' ')}")
+            if (code !in 200..299) throw IOException("HTTP $code ${text.take(160)}")
+
             val obj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
             val fromObject = obj?.get("event_id")?.jsonPrimitive?.safeContent()
             obj?.get("error")?.jsonPrimitive?.safeContent()?.let { throw IOException(it) }
-            fromObject ?: runCatching {
-                json.parseToJsonElement(text).jsonPrimitive.content
-            }.getOrNull()
+            fromObject ?: runCatching { json.parseToJsonElement(text).jsonPrimitive.content }.getOrNull()
         } finally {
             conn.disconnect()
         }
     }
 
-    private suspend fun poll(url: String): JsonObject? {
-        // hard ceiling: the panel shows a live timer, so the user can always see it is
-        // working; after this we fail loudly instead of spinning forever.
+    private sealed class Poll {
+        data class Done(val value: JsonObject) : Poll()
+        data class Error(val message: String) : Poll()
+        data object Timeout : Poll()
+    }
+
+    /**
+     * Reads the SSE stream the way gradio_client does: `event:` names the frame type,
+     * `data:` carries its JSON, a blank line closes the frame. Older Gradio builds omit the
+     * `event:` line, so the payload is also inspected directly.
+     */
+    private suspend fun poll(
+        url: String,
+        onStage: (String) -> Unit,
+        onLog: (String) -> Unit,
+    ): Poll {
         val deadline = System.currentTimeMillis() + 5 * 60 * 1000
+        onLog("GET $url")
         while (System.currentTimeMillis() < deadline) {
             val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
@@ -186,32 +229,100 @@ object AiEditClient {
                 readTimeout = 120_000
                 setRequestProperty("Accept", "text/event-stream")
             }
-            var last: JsonObject? = null
+            var event = ""
+            val dataLines = mutableListOf<String>()
             try {
                 val code = conn.responseCode
-                if (code !in 200..299) {
-                    throw IOException("HTTP $code saat menunggu hasil")
-                }
-                conn.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { line ->
-                        if (!line.startsWith("data:")) return@forEach
-                        val payload = line.removePrefix("data:").trim()
-                        if (payload.isEmpty()) return@forEach
-                        val obj = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull()
-                        // Gradio streams progress messages too; keep the last full object
-                        if (obj != null) last = obj
+                onLog("SSE HTTP $code")
+                if (code !in 200..299) throw IOException("HTTP $code saat menunggu hasil")
+
+                fun frame(): Poll? {
+                    if (dataLines.isEmpty()) {
+                        event = ""
+                        return null
                     }
+                    val raw = dataLines.joinToString("\n").trim()
+                    dataLines.clear()
+                    val type = event.ifBlank { "" }.trim()
+                    event = ""
+                    if (raw.isEmpty() || raw == "null") return null
+                    onLog("event=$type ${raw.take(120).replace('\n', ' ')}")
+
+                    val parsed = runCatching { json.parseToJsonElement(raw) }.getOrNull()
+                    // data is the positional list of return values: [{"image": ...}]
+                    val obj = when (parsed) {
+                        is JsonArray -> parsed.firstOrNull() as? JsonObject
+                        is JsonObject -> parsed
+                        else -> null
+                    }
+                    when (type) {
+                        "complete" -> if (obj != null) return Poll.Done(obj)
+                        "error" -> {
+                            val msg = (obj?.get("error") ?: obj?.get("message"))
+                                ?.jsonPrimitive?.safeContent()
+                            return Poll.Error(msg ?: "server mengembalikan error")
+                        }
+                        "generating", "status" -> {
+                            val stage = progressText(type, obj ?: parsed as? JsonObject)
+                            if (stage != null) onStage(stage)
+                        }
+                    }
+                    // fallback for builds without the `event:` line
+                    if (obj != null && (obj["image"] != null || obj["status"] != null)) {
+                        return Poll.Done(obj)
+                    }
+                    return null
                 }
+
+                conn.inputStream.bufferedReader().useLines { lines ->
+                    for (line in lines) {
+                        if (line.isEmpty()) {
+                            val done = frame()
+                            if (done != null) return done
+                        } else if (line.startsWith("event:")) {
+                            event = line.removePrefix("event:")
+                        } else if (line.startsWith("data:")) {
+                            dataLines.add(line.removePrefix("data:").trim())
+                        }
+                    }
+                    // stream closed: flush whatever is left
+                    frame()?.let { return it }
+                }
+            } catch (e: IOException) {
+                onLog("SSE error: ${e.message}")
+                throw e
             } finally {
                 conn.disconnect()
             }
-            val done = last
-            if (done != null && (done["image"] != null || done["status"] != null)) return done
-            delay(3_000)
+            delay(2_000)
         }
-        return null
+        onLog("timeout setelah 5 menit")
+        return Poll.Timeout
     }
 
+    /** Turns gradio's status frames into something a human can read. */
+    private fun progressText(type: String, obj: JsonObject?): String? {
+        if (obj == null) return null
+        val status = obj["status"]?.jsonPrimitive?.safeContent()
+        val queue = obj["rank"]?.jsonPrimitive?.safeContent()
+            ?: obj["position"]?.jsonPrimitive?.safeContent()
+        if (status == "pending") {
+            return if (queue != null) "antrean #${queue.toIntOrNull()?.plus(1) ?: queue}" else "antrean"
+        }
+        val pd = runCatching { obj["progress_data"] as? JsonArray }.getOrNull()
+        val last = pd?.lastOrNull() as? JsonObject
+        val index = last?.get("index")?.jsonPrimitive?.safeContent()?.toFloatOrNull()
+        val length = last?.get("length")?.jsonPrimitive?.safeContent()?.toFloatOrNull()
+        if (index != null && length != null && length > 0f) {
+            return "membuat ${(index / length * 100).toInt()}%"
+        }
+        return when (type) {
+            "generating" -> "membuat gambar"
+            else -> null
+        }
+    }
+
+    private fun JsonPrimitive.safeContent(): String? = runCatching { content }.getOrNull()
 
     private fun friendly(t: Throwable): String {
         val raw = t.message ?: t::class.java.simpleName
@@ -219,16 +330,16 @@ object AiEditClient {
             raw.contains("503") -> "server AI sedang tidur, coba lagi sebentar"
             raw.contains("429") -> "kuota server AI penuh, coba lagi nanti"
             raw.contains("timeout", ignoreCase = true) -> "koneksi ke server AI timeout"
-            raw.contains("Unable to resolve host", ignoreCase = true) -> "tidak ada internet"
+            raw.contains("Unable to resolve host") || raw.contains("UnknownHost") ->
+                "tidak ada internet"
+            raw.contains("HTTP 4") -> "server menolak permintaan ($raw)"
             else -> raw.take(160)
         }
     }
 
-    /** JsonPrimitive.content throws for null/objects; keep it defensive. */
-    private fun JsonPrimitive.safeContent(): String? = runCatching { content }.getOrNull()
-
     private fun prune(dir: File) {
-        val files = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: return
-        files.drop(12).forEach { runCatching { it.delete() } }
+        runCatching {
+            dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(12)?.forEach { it.delete() }
+        }
     }
 }

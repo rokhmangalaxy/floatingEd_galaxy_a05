@@ -209,6 +209,9 @@ class EditorActivity : ComponentActivity() {
             val enter by animateFloatAsState(1f, tween(220), label = "enter")
             val ctx = LocalContext.current
             val haptics = rememberHaptics()
+            // AI state lives here (not inside the panel) so leaving the AI tool never cancels
+            // a running request nor drops a finished result.
+            val aiSession = remember { AiSessionState(this@EditorActivity, scope) }
 
             suspend fun refreshHistory() {
                 history = HistoryStore.list(ctx)
@@ -382,6 +385,7 @@ class EditorActivity : ComponentActivity() {
                             onTextAnchor = vm::setTextAnchor,
                             onTextRotationPreview = vm::previewTextRotation,
                             onTextRotationCommit = vm::commitTextRotation,
+                            aiSession = aiSession,
                             onAiApply = { bmp ->
                                 // last AI result wins: it becomes the working picture, and
                                 // undo takes you straight back to the previous one.

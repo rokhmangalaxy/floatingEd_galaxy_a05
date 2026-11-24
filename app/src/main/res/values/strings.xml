@@ -121,4 +121,10 @@
     <string name="ai_cancel">Batal</string>
     <string name="ai_cancelled">Permintaan AI dibatalkan</string>
     <string name="drag_hint">geser untuk pindah</string>
+    <string name="ai_log_show">Log</string>
+    <string name="ai_log_hide">Tutup log</string>
+    <string name="ai_log_copy">Salin</string>
+    <string name="ai_log_title">Log permintaan</string>
+    <string name="ai_log_copied">Log disalin ke clipboard</string>
+    <string name="panel_ai_hint_short">Hasil terbaru langsung menggantikan gambar; hasil lama bisa di-tap.</string>
 </resources>

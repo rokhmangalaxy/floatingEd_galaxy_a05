@@ -121,4 +121,10 @@
     <string name="ai_cancel">Cancel</string>
     <string name="ai_cancelled">AI request cancelled</string>
     <string name="drag_hint">drag to move</string>
+    <string name="ai_log_show">Log</string>
+    <string name="ai_log_hide">Hide log</string>
+    <string name="ai_log_copy">Copy</string>
+    <string name="ai_log_title">Request log</string>
+    <string name="ai_log_copied">Log copied to clipboard</string>
+    <string name="panel_ai_hint_short">The newest result replaces the picture; tap an older one to go back.</string>
 </resources>

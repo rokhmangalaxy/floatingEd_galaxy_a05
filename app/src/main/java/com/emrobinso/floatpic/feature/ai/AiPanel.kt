@@ -1,5 +1,6 @@
 package com.emrobinso.floatpic.feature.ai
 
+import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -13,22 +14,21 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,123 +36,201 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.data.AiEditClient
 import com.emrobinso.floatpic.data.AiPromptStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** One finished run: the bitmap plus the prompt that produced it. */
 data class AiCandidate(val bitmap: Bitmap, val prompt: String, val lora: String?)
 
 /**
- * AI panel.
+ * Everything the AI panel shows, held ABOVE the panel (in the Activity).
  *
- * Session rules the user asked for:
- *  - the panel starts EMPTY every time it is opened (input, button and spinner are reset),
- *    which is why nothing here is remembered across a [Tool.AI] open/close;
- *  - while a request runs a timer ticks, so a slow Space never looks frozen;
- *  - the prompt box is a two line textarea;
- *  - the last 10 prompts are kept as one-tap history chips.
- *
- * Results are a tray: the newest run immediately replaces the working picture (last wins)
- * and older runs stay tappable.
+ * The panel composable is disposed the moment the user leaves the AI tool, so any state kept
+ * inside it was lost — that is why a running request used to disappear and a finished result
+ * vanished when switching menus. All of it lives here now, and the request runs on the
+ * Activity scope, so switching tools never cancels it.
  */
-@Composable
-fun AiPanel(
-    source: Bitmap?,
-    onApply: (Bitmap) -> Unit,
-    onInfo: (String) -> Unit,
+class AiSessionState(
+    private val context: Context,
+    private val scope: CoroutineScope,
 ) {
-    val scheme = MaterialTheme.colorScheme
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val results = remember { mutableStateListOf<AiCandidate>() }
+    var prompt by mutableStateOf("")
+    var lora by mutableStateOf<String?>(null)
+    var busy by mutableStateOf(false)
+        private set
+    var stage by mutableStateOf("")
+        private set
+    var error by mutableStateOf<String?>(null)
+        private set
+    var elapsed by mutableStateOf(0)
+        private set
+    var showLog by mutableStateOf(false)
+        private set
 
-    // saveable-only where it must survive a rotation, plain state where it must reset
-    var prompt by remember { mutableStateOf("") }
-    var lora by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var stage by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var elapsed by remember { mutableStateOf(0) }
-    var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    /** newest first; the first one is what the editor is currently showing */
+    val results = mutableStateListOf<AiCandidate>()
 
-    // ---- prompt history (10, newest first, transparently persisted) -------------------
-    var promptHistory by remember { mutableStateOf(AiPromptStore.load(ctx)) }
+    /** readable trace of the last run, copyable from the UI */
+    val log = mutableStateListOf<String>()
 
-    fun rememberPrompt(text: String) {
-        promptHistory = AiPromptStore.push(ctx, text)
+    var prompts by mutableStateOf(AiPromptStore.load(context))
+        private set
+
+    private var job: Job? = null
+    private var resultCallback: ((Bitmap) -> Unit)? = null
+
+    private fun note(line: String) {
+        val t = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+        log.add("[$t] $line")
+        // keep the box small; the newest lines are what matter
+        while (log.size > 120) log.removeAt(0)
     }
 
-    // ---- timer: seconds since the request started ------------------------------------
-    LaunchedEffect(busy) {
-        if (!busy) {
-            elapsed = 0
-            return@LaunchedEffect
-        }
-        val start = System.currentTimeMillis()
-        while (busy) {
-            elapsed = ((System.currentTimeMillis() - start) / 1000L).toInt()
-            delay(200)
-        }
+    fun logText(): String = log.joinToString("\n")
+
+    fun toggleLog() {
+        showLog = !showLog
     }
 
-    fun run(correction: String?) {
-        val bmp = source ?: return
+    fun cancel(info: (String) -> Unit) {
+        job?.cancel()
+        job = null
+        busy = false
+        stage = ""
+        note("dibatalkan oleh pengguna")
+        info(context.getString(R.string.ai_cancelled))
+    }
+
+    fun pushPrompt(text: String) {
+        prompts = AiPromptStore.push(context, text)
+    }
+
+    /**
+     * Starts a request. [onApply] is remembered so a result that arrives while the user is in
+     * another tool is still applied instead of being dropped.
+     */
+    fun run(
+        source: Bitmap?,
+        correction: String?,
+        onApply: (Bitmap) -> Unit,
+        onInfo: (String) -> Unit,
+    ) {
+        val bmp = source
+        if (bmp == null) {
+            onInfo(context.getString(R.string.open_failed))
+            return
+        }
         if (prompt.isBlank()) {
-            onInfo(ctx.getString(R.string.ai_no_prompt))
+            onInfo(context.getString(R.string.ai_no_prompt))
             return
         }
         if (busy) return
+
+        resultCallback = onApply
         busy = true
         error = null
-        results.clear()
-        rememberPrompt(prompt)
-        stage = ctx.getString(R.string.ai_uploading)
+        stage = context.getString(R.string.ai_uploading)
+        elapsed = 0
+        log.clear()
         val sentPrompt = prompt
+        pushPrompt(sentPrompt)
+        note("app ${android.os.Build.VERSION.RELEASE} / ${android.os.Build.MODEL}")
+        note("mulai: prompt=\"${sentPrompt.take(80)}\" lora=${lora ?: AiEditClient.DEFAULT_LORA}")
+        note("sumber ${bmp.width}x${bmp.height}")
+
+        // running on the ACTIVITY scope: leaving the AI menu must not cancel the request
         job = scope.launch {
             val res = AiEditClient.edit(
                 source = bmp,
                 prompt = sentPrompt,
                 lora = lora,
                 correction = correction,
-                onStage = { phase ->
-                    stage = if (phase == "upload") ctx.getString(R.string.ai_uploading)
-                    else ctx.getString(R.string.ai_generating)
-                },
+                onStage = { s -> stage = s.replaceFirstChar { it.uppercase() } },
+                onLog = { line -> note(line) },
             )
             busy = false
             job = null
             when (res) {
                 is AiEditClient.Result.Ok -> {
                     results.add(0, AiCandidate(res.bitmap, sentPrompt, lora))
-                    // last result wins: it immediately replaces the working picture
-                    onApply(res.bitmap)
-                    // the request is done: the panel goes back to its empty, ready state
+                    note("sukses: ${res.bitmap.width}x${res.bitmap.height}, ${results.size} hasil")
+                    resultCallback?.invoke(res.bitmap)
                     prompt = ""
-                    onInfo(ctx.getString(R.string.ai_done))
+                    onInfo(context.getString(R.string.ai_done))
                 }
                 is AiEditClient.Result.Failed -> {
                     error = res.message
-                    onInfo(ctx.getString(R.string.ai_failed_detail, res.message))
+                    stage = ""
+                    note("gagal: ${res.message}")
+                    onInfo(context.getString(R.string.ai_failed_detail, res.message))
                 }
             }
         }
+
+        // ticking timer: separate job so it stops with the request
+        scope.launch {
+            val start = System.currentTimeMillis()
+            while (busy) {
+                elapsed = ((System.currentTimeMillis() - start) / 1000L).toInt()
+                delay(200)
+            }
+        }
     }
+}
+
+/**
+ * AI panel. All state lives in [session] (see [AiSessionState]), so opening another tool and
+ * coming back keeps the prompt, the running timer, the log and every generated picture.
+ */
+@Composable
+fun AiPanel(
+    session: AiSessionState,
+    source: Bitmap?,
+    onApply: (Bitmap) -> Unit,
+    onInfo: (String) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
+    val clipboard = LocalClipboardManager.current
 
     Column(Modifier.fillMaxWidth()) {
-        Text(
-            ctx.getString(R.string.panel_ai_title),
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 13.sp,
-            color = scheme.onSurface,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                ctx.getString(R.string.panel_ai_title),
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                color = scheme.onSurface,
+            )
+            Spacer(Modifier.weight(1f))
+            // log toggle: the only way to see why a request did nothing
+            Text(
+                ctx.getString(if (session.showLog) R.string.ai_log_hide else R.string.ai_log_show),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = scheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(scheme.primary.copy(alpha = .12f))
+                    .clickable { session.toggleLog() }
+                    .padding(horizontal = 9.dp, vertical = 4.dp),
+            )
+        }
         Spacer(Modifier.height(5.dp))
 
         // prompt box: TWO lines, no auto-focus (opening the panel must not pop the keyboard)
@@ -166,7 +244,7 @@ fun AiPanel(
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             contentAlignment = Alignment.TopStart,
         ) {
-            if (prompt.isEmpty()) {
+            if (session.prompt.isEmpty()) {
                 Text(
                     ctx.getString(R.string.panel_ai_hint),
                     fontSize = 11.sp,
@@ -175,8 +253,8 @@ fun AiPanel(
                 )
             }
             BasicTextField(
-                value = prompt,
-                onValueChange = { if (it.length <= 150) prompt = it },
+                value = session.prompt,
+                onValueChange = { if (it.length <= 150) session.prompt = it },
                 singleLine = false,
                 maxLines = 2,
                 textStyle = TextStyle(fontSize = 12.sp, color = scheme.onSurface, lineHeight = 15.sp),
@@ -184,17 +262,16 @@ fun AiPanel(
             )
         }
 
-        if (promptHistory.isNotEmpty()) {
+        if (session.prompts.isNotEmpty()) {
             Spacer(Modifier.height(5.dp))
-            // 10 last prompts: tap to reuse, long press would be nicer but a tap is enough
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                promptHistory.forEach { item ->
-                    PromptChip(text = item) { prompt = item }
+                session.prompts.forEach { item ->
+                    PromptChip(text = item) { session.prompt = item }
                 }
             }
         }
@@ -204,9 +281,11 @@ fun AiPanel(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            LoraChip(label = ctx.getString(R.string.ai_lora_none), active = lora == null) { lora = null }
+            LoraChip(ctx.getString(R.string.ai_lora_none), session.lora == null) {
+                session.lora = null
+            }
             AiEditClient.LORAS.forEach { id ->
-                LoraChip(label = id, active = lora == id) { lora = id }
+                LoraChip(label = id, active = session.lora == id) { session.lora = id }
             }
         }
 
@@ -217,22 +296,21 @@ fun AiPanel(
         ) {
             RunChip(
                 label = ctx.getString(R.string.ai_run),
-                enabled = !busy,
-                onClick = { run(null) },
+                enabled = !session.busy,
+                onClick = { session.run(source, null, onApply, onInfo) },
             )
-            if (busy) {
+            if (session.busy) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp,
                     color = scheme.primary,
                 )
                 Text(
-                    "${stage} ${elapsed}s",
+                    "${session.stage} ${session.elapsed}s",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = scheme.onSurfaceVariant,
                 )
-                // escape hatch: a sleeping Space used to leave the panel loading forever
                 Text(
                     ctx.getString(R.string.ai_cancel),
                     fontSize = 10.sp,
@@ -241,23 +319,25 @@ fun AiPanel(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
                         .background(scheme.error.copy(alpha = .12f))
-                        .clickable {
-                            job?.cancel()
-                            job = null
-                            busy = false
-                            onInfo(ctx.getString(R.string.ai_cancelled))
-                        }
+                        .clickable { session.cancel(onInfo) }
                         .padding(horizontal = 9.dp, vertical = 5.dp),
                 )
-            } else if (results.isNotEmpty()) {
+            } else if (session.results.isNotEmpty()) {
                 RunChip(
                     label = ctx.getString(R.string.ai_retry),
                     enabled = true,
-                    onClick = { run("keep the composition, improve on the previous attempt") },
+                    onClick = {
+                        session.run(
+                            source,
+                            "keep the composition, improve on the previous attempt",
+                            onApply,
+                            onInfo,
+                        )
+                    },
                 )
             }
             Spacer(Modifier.weight(1f))
-            error?.let {
+            session.error?.let {
                 Text(
                     ctx.getString(R.string.ai_failed_detail, it),
                     fontSize = 9.sp,
@@ -267,10 +347,59 @@ fun AiPanel(
             }
         }
 
-        if (results.isNotEmpty()) {
+        if (session.showLog) {
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    ctx.getString(R.string.ai_log_title),
+                    fontSize = 10.sp,
+                    color = scheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    ctx.getString(R.string.ai_log_copy),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = scheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(scheme.primary.copy(alpha = .12f))
+                        .clickable {
+                            clipboard.setText(AnnotatedString(session.logText()))
+                            onInfo(ctx.getString(R.string.ai_log_copied))
+                        }
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 132.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(scheme.surfaceVariant.copy(alpha = .55f))
+                    .border(1.dp, scheme.outline.copy(.35f), RoundedCornerShape(9.dp))
+                    .padding(7.dp),
+            ) {
+                val scroll = rememberScrollState()
+                LaunchedEffect(session.log.size) { scroll.scrollTo(scroll.maxValue) }
+                Text(
+                    text = if (session.log.isEmpty()) "—" else session.logText(),
+                    fontSize = 8.5.sp,
+                    lineHeight = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(scroll),
+                )
+            }
+        }
+
+        if (session.results.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
             Text(
-                ctx.getString(R.string.ai_results) + " (${results.size})",
+                ctx.getString(R.string.ai_results) + " (${session.results.size})",
                 fontSize = 10.sp,
                 color = scheme.onSurfaceVariant,
             )
@@ -281,7 +410,7 @@ fun AiPanel(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                results.forEachIndexed { index, candidate ->
+                session.results.forEachIndexed { index, candidate ->
                     Box(
                         Modifier
                             .size(46.dp)
@@ -307,7 +436,7 @@ fun AiPanel(
 
         Spacer(Modifier.height(4.dp))
         Text(
-            ctx.getString(R.string.panel_ai_hint),
+            ctx.getString(R.string.panel_ai_hint_short),
             fontSize = 9.sp,
             lineHeight = 12.sp,
             color = scheme.onSurfaceVariant,
