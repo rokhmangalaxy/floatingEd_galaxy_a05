@@ -143,6 +143,8 @@ fun EditorScreen(
     onSave: () -> Unit,
     onShare: () -> Unit,
     onCommitEdit: () -> Unit,
+    /** delta from the grabber in the top bar; moves the whole floating card */
+    onDrag: (Float, Float) -> Unit,
     onReset: () -> Unit,
     onAlign: (Float, Float) -> Unit,
     onPadding: (Float) -> Unit,
@@ -213,6 +215,8 @@ fun EditorScreen(
                 onRedo = onRedo,
                 onThemeToggle = onThemeToggle,
                 onMinimize = onMinimize,
+                haptics = haptics,
+                onDrag = onDrag,
             )
 
             // ---- STABLE ZONE -------------------------------------------------------
@@ -348,6 +352,8 @@ private fun TopBar(
     onRedo: () -> Unit,
     onThemeToggle: () -> Unit,
     onMinimize: () -> Unit,
+    haptics: Haptics,
+    onDrag: (dragX: Float, dragY: Float) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     Row(
@@ -357,6 +363,38 @@ private fun TopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RoundIconButton(onClick = onClose) { FloatIcons.Close(tint = scheme.onSurface) }
+        // THE DRAG HANDLE: a grabber immediately to the left of the "FloatPic" label, exactly
+        // where the window controls of a floating window would be. It has its own gesture,
+        // so dragging it never moves the picture (that is the preview's pan gesture).
+        Box(
+            Modifier
+                .size(width = 22.dp, height = 34.dp)
+                .semantics { contentDescription = "geser" }
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { haptics.tick() },
+                        onDrag = { change, drag ->
+                            change.consume()
+                            onDrag(drag.x, drag.y)
+                        },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                repeat(3) {
+                    Box(
+                        Modifier
+                            .size(width = 10.dp, height = 2.dp)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(scheme.onSurface.copy(alpha = 0.38f)),
+                    )
+                }
+            }
+        }
         Text(
             text = "FloatPic",
             fontWeight = FontWeight.ExtraBold,

@@ -78,7 +78,8 @@ class AiSessionState(
     private val scope: CoroutineScope,
 ) {
     var prompt by mutableStateOf("")
-    var lora by mutableStateOf<String?>(null)
+    /** styles are gone from the UI; the server still needs an adapter id */
+    private val lora: String? = null
     var backend by mutableStateOf(AiBackend.of(AiPromptStore.backend(context)))
         private set
 
@@ -135,11 +136,9 @@ class AiSessionState(
         prompts = AiPromptStore.push(context, text)
     }
 
-    /** Switching server invalidates the LoRA choice: ids differ per Space. */
     fun chooseBackend(next: AiBackend) {
         if (next == backend) return
         backend = next
-        lora = null
         AiPromptStore.setBackend(context, next.name)
         note("server diganti ke ${next.label}")
     }
@@ -354,24 +353,6 @@ fun AiPanel(
             }
         }
 
-        // The LoRA row is only useful when the server offers styles. Rapid-AIO also has a
-        // real "None", so the first chip genuinely means "no style".
-        Spacer(Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            if (session.backend.noStyle != null) {
-                LoraChip(
-                    label = ctx.getString(R.string.ai_lora_none),
-                    active = session.lora == null,
-                ) { session.lora = null }
-            }
-            session.backend.loras.forEach { id ->
-                LoraChip(label = id, active = session.lora == id) { session.lora = id }
-            }
-        }
-
         // per-IP allowance: the public Space gives ~3 runs per IP per 24 h, so say where
         // this device stands BEFORE the user spends one
         session.quota?.let { q ->
@@ -529,27 +510,6 @@ private fun PromptChip(text: String, onClick: () -> Unit) {
             .background(scheme.surfaceVariant.copy(.7f))
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 4.dp),
-    )
-}
-
-@Composable
-private fun LoraChip(label: String, active: Boolean, onClick: () -> Unit) {
-    val scheme = MaterialTheme.colorScheme
-    Text(
-        text = label,
-        fontSize = 10.sp,
-        maxLines = 1,
-        color = if (active) scheme.onPrimary else scheme.onSurfaceVariant,
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (active) scheme.primary else Color.Transparent)
-            .border(
-                1.dp,
-                if (active) Color.Transparent else scheme.outline.copy(.5f),
-                RoundedCornerShape(50),
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
     )
 }
 

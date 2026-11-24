@@ -259,47 +259,6 @@ class EditorActivity : ComponentActivity() {
                             ),
                     ) {
                         Column {
-                        // DRAG HANDLE: a wide, obviously grabbable strip on top of the card.
-                        // It is its own Box (not part of the editor), so its gesture can never
-                        // be swallowed by the preview's pan/zoom detector.
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(28.dp)
-                                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
-                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                                .pointerInput(Unit) {
-                                    detectDragGestures(
-                                        onDragStart = { haptics.tick() },
-                                        onDrag = { change, drag ->
-                                            change.consume()
-                                            cardX = (cardX + drag.x).coerceIn(-maxShiftX, maxShiftX)
-                                            cardY = (cardY + drag.y).coerceIn(-maxShiftY, maxShiftY)
-                                        },
-                                    )
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            ) {
-                                repeat(3) {
-                                    Box(
-                                        Modifier
-                                            .size(4.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)),
-                                    )
-                                }
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    LocalContext.current.getString(R.string.drag_hint),
-                                    fontSize = 9.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
                         EditorScreen(
                             state = ui.state,
                             bitmap = vm.source,
@@ -345,6 +304,8 @@ class EditorActivity : ComponentActivity() {
                                         vm.openAndRestore(snapshot) {
                                             ImageLoader.loadFile(this@EditorActivity, file)
                                         }
+                                        // the reopened picture becomes the base AI edits from
+                                        vm.source?.let { vm.useBase(it, file) }
                                         // reopening an entry keeps writing to the same row
                                         currentSessionId = entry.id
                                     }
@@ -361,6 +322,10 @@ class EditorActivity : ComponentActivity() {
                             onAspect = vm::setAspect,
                             onPreview = vm::previewTransform,
                             onCommit = vm::commitTransform,
+                            onDrag = { dragX, dragY ->
+                                cardX = (cardX + dragX).coerceIn(-maxShiftX, maxShiftX)
+                                cardY = (cardY + dragY).coerceIn(-maxShiftY, maxShiftY)
+                            },
                             onSave = { saveToGallery(scope) },
                             onCommitEdit = {
                                 scope.launch {
@@ -409,6 +374,20 @@ class EditorActivity : ComponentActivity() {
                                 val file = AiEditClient.persist(this@EditorActivity, bmp)
                                 vm.replaceSource(bmp, file)
                                 currentSessionId = null
+                                // EVERY AI result gets its own history row. The renderer draws
+                                // the remaining edits (text, frame, ratio…) on top, so what is
+                                // stored is the finished picture, not a separate ingredient.
+                                scope.launch {
+                                    val entry = autosave(force = true)
+                                    refreshHistory()
+                                    if (entry == null) {
+                                        Toast.makeText(
+                                            this@EditorActivity,
+                                            R.string.commit_edit_failed,
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                }
                             },
                             onInfo = { msg ->
                                 Toast.makeText(this@EditorActivity, msg, Toast.LENGTH_SHORT).show()
@@ -611,9 +590,10 @@ class EditorActivity : ComponentActivity() {
         val bmp = vm.source ?: return@withContext null
         // Default preview / "reset to original" is not worth a history row.
         if (!vm.hasRealEdits()) return@withContext null
-        // history stores the BASE picture + the edit state, so reopening a row always gives
-        // the original back (and the AI keeps sending that original, never its own output)
-        val rowBitmap = vm.baseForHistory() ?: bmp
+        // What the row shows must be what the user sees: the edited picture. The state is
+        // stored alongside it, so reopening a row restores the same look (and AI still gets
+        // the untouched base from vm.aiSource()).
+        val rowBitmap = renderCurrent() ?: vm.baseForHistory() ?: bmp
         if (!force && !vm.isDirty()) return@withContext null
         val entry = HistoryStore.record(
             context = this@EditorActivity,

@@ -117,7 +117,10 @@ class EditorViewModel : ViewModel() {
         restore(snapshot)
     }
 
-    /** A restored session is based on the file it was saved with. */
+    /**
+     * A restored session is based on the file it was saved with. Because history rows now
+     * contain the RENDERED picture, this file is exactly what AI should edit next.
+     */
     fun useBase(bitmap: Bitmap, file: java.io.File?) {
         if (baseSource !== bitmap) {
             if (baseSource !== source) baseSource?.recycle()
