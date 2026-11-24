@@ -242,6 +242,10 @@ class EditorViewModel : ViewModel() {
 
     fun setTextPosition(pos: TextPosition) = mutate { it.copy(text = it.text.copy(position = pos)) }
 
+    fun setTextAlign(align: com.emrobinso.floatpic.core.model.TextAlign) = mutate {
+        it.copy(text = it.text.copy(align = align))
+    }
+
     fun setTextStyle(style: TextStylePreset) = mutate {
         it.copy(text = it.text.copy(style = style))
     }

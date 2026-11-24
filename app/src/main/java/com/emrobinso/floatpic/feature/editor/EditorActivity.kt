@@ -25,12 +25,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -151,6 +152,9 @@ class EditorActivity : ComponentActivity() {
 
         handleIntent(intent)
 
+        val screenMaxHeight = resources.displayMetrics.heightPixels /
+            resources.displayMetrics.density
+
         setContent {
             val ui by vm.ui.collectAsState()
             val scope = rememberCoroutineScope()
@@ -192,7 +196,10 @@ class EditorActivity : ComponentActivity() {
                                 alpha = enter
                             }
                             .fillMaxWidth(0.80f)
-                            .fillMaxHeight(0.70f)
+                            // hug the content instead of a fixed 70% block: the tall empty
+                            // band above the preview was exactly this fixed height.
+                            .wrapContentHeight(Alignment.CenterVertically)
+                            .heightIn(max = (screenMaxHeight * 0.78f).dp)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -283,6 +290,7 @@ class EditorActivity : ComponentActivity() {
                             onTextPosition = vm::setTextPosition,
                             onTextStyle = vm::setTextStyle,
                             onTextSize = vm::setTextSize,
+                            onTextAlign = vm::setTextAlign,
                             onPickImage = {
                                 runCatching {
                                     pickImage.launch(

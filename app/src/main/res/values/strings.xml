@@ -93,4 +93,8 @@
     <string name="reset_done">Gambar dikembalikan ke asli</string>
     <string name="bubble_failed">Bubble tidak bisa dibuat. Cek izin "Tampil di atas aplikasi lain" lalu coba lagi.</string>
     <string name="rotation_format">%1$d°</string>
+    <string name="action_paste">Tempel</string>
+    <string name="text_align_left">Rata kiri</string>
+    <string name="text_align_center">Rata tengah</string>
+    <string name="text_align_right">Rata kanan</string>
 </resources>

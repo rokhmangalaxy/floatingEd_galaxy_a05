@@ -14,6 +14,7 @@ import com.emrobinso.floatpic.core.model.AspectPreset
 import com.emrobinso.floatpic.core.model.BackgroundKind
 import com.emrobinso.floatpic.core.model.EditorState
 import com.emrobinso.floatpic.core.model.ScaleMode
+import com.emrobinso.floatpic.core.model.TextAlign
 import com.emrobinso.floatpic.core.model.TextOverlay
 import com.emrobinso.floatpic.core.model.TextPosition
 import com.emrobinso.floatpic.core.model.TextStylePreset
@@ -319,13 +320,17 @@ object TextPainter {
         var result: Layouts? = null
         var guard = 0
         while (guard++ < 24) {
-            val l = build(overlay.text, maxWidth, sizePx, fillColor, strokeColor, strokeFrac)
+            val l = build(overlay.text, maxWidth, sizePx, fillColor, strokeColor, strokeFrac, overlay.align)
             result = l
             if (l.height <= h * 0.3f || sizePx < w * 0.028f) break
             sizePx *= 0.94f
         }
         val layouts = result ?: return
-        val x = (w - layouts.width) / 2f
+        val x = when (overlay.align) {
+            TextAlign.LEFT -> margin
+            TextAlign.CENTER -> (w - layouts.width) / 2f
+            TextAlign.RIGHT -> w - layouts.width - margin
+        }
         val y = when (overlay.position) {
             TextPosition.TOP_CENTER -> h * 0.05f
             TextPosition.BOTTOM_CENTER -> h - layouts.height - h * 0.06f
@@ -349,6 +354,7 @@ object TextPainter {
         fill: Int,
         stroke: Int,
         strokeFrac: Float,
+        align: TextAlign,
     ): Layouts {
         val typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
         fun paint(color: Int, width: Float, style: Paint.Style) = android.text.TextPaint(
@@ -362,9 +368,14 @@ object TextPainter {
             strokeCap = Paint.Cap.ROUND
             this.typeface = typeface
         }
+        val textAlign = when (align) {
+            TextAlign.LEFT -> android.text.Layout.Alignment.ALIGN_NORMAL
+            TextAlign.CENTER -> android.text.Layout.Alignment.ALIGN_CENTER
+            TextAlign.RIGHT -> android.text.Layout.Alignment.ALIGN_OPPOSITE
+        }
         fun layout(p: android.text.TextPaint) = android.text.StaticLayout.Builder
             .obtain(text, 0, text.length, p, maxWidth)
-            .setAlignment(android.text.Layout.Alignment.ALIGN_CENTER)
+            .setAlignment(textAlign)
             .setLineSpacing(0f, 1.05f)
             .setMaxLines(3)
             .setIncludePad(true)

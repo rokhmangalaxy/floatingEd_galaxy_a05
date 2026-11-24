@@ -56,8 +56,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -71,6 +73,7 @@ import com.emrobinso.floatpic.core.model.BackgroundSpec
 import com.emrobinso.floatpic.core.model.EditorState
 import com.emrobinso.floatpic.core.model.ScaleMode
 import com.emrobinso.floatpic.core.model.TextPosition
+import com.emrobinso.floatpic.core.model.TextAlign
 import com.emrobinso.floatpic.core.model.TextStylePreset
 import com.emrobinso.floatpic.core.model.Transform
 import com.emrobinso.floatpic.ui.Haptics
@@ -154,6 +157,7 @@ fun EditorScreen(
     onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
+    onTextAlign: (TextAlign) -> Unit,
     onPickImage: () -> Unit,
     history: List<com.emrobinso.floatpic.data.HistoryEntry>,
     onOpenHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
@@ -170,6 +174,7 @@ fun EditorScreen(
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .wrapContentHeight()
             .shadow(if (extra.raised) 4.dp else 22.dp, RoundedCornerShape(radius), clip = false)
             .border(
                 width = if (extra.raised) 1.dp else 0.dp,
@@ -181,7 +186,7 @@ fun EditorScreen(
     ) {
         Column(
             Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 // No statusBarsPadding / nav-bar spacer here: the card floats mid-screen
                 // and never touches the system bars, so those insets were pure empty space
                 // (the "boros space" bands above the top bar and under the buttons).
@@ -202,102 +207,103 @@ fun EditorScreen(
             // ---- STABLE ZONE -------------------------------------------------------
             // Everything here keeps its position. Only the overlay panel below moves,
             // because it is drawn *over* the preview instead of pushing it.
-            Box(
+            BoxWithConstraints(
                 Modifier
                     .fillMaxWidth()
-                    .weight(1f)
                     .padding(horizontal = 8.dp, vertical = 2.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    // CONTAINER: always a square (side = min(w,h)). It never follows the
-                    // image ratio — it is the stage the preview element sits on.
-                    val side = min(maxWidth.value, maxHeight.value).dp
-                    // tap on the empty margin of the square closes the open panel;
-                    // a tap on the image itself is consumed by the preview below.
-                    val closePanel = { if (tool != Tool.NONE) tool = Tool.NONE }
-                    Box(
-                        Modifier
-                            .size(side)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(.34f),
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(.14f),
-                                    ),
-                                ),
-                            )
-                            .border(
-                                1.dp,
-                                MaterialTheme.colorScheme.outline.copy(.30f),
-                                RoundedCornerShape(12.dp),
-                            )
-                            .pointerInput(Unit) { detectTapGestures { closePanel() } },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        when {
-                            loading -> LoadingState()
-                            error != null -> ErrorState(error)
-                            bitmap == null -> EmptyState(onPickImage)
-                            else -> EditorViewport(
-                                state = state,
-                                bitmap = bitmap,
-                                haptics = haptics,
-                                showGuides = guides || tool == Tool.CROP || tool == Tool.FRAME,
-                                onPreview = onPreview,
-                                onCommit = onCommit,
-                                onTapOutside = closePanel,
-                                // inset so the ratio window never touches the square frame
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(6.dp),
-                            )
-                        }
-                    }
-                }
+                // The card hugs its content now, so there is no leftover band above the
+                // preview. The square is as wide as the card, capped by the screen height
+                // so a tall-aspect phone never overflows.
+                val screenH = LocalConfiguration.current.screenHeightDp.toFloat()
+                val side = min(maxWidth.value, screenH * 0.42f).dp
+                // tap on the empty margin of the square closes the open panel; a tap on
+                // the image itself is consumed by the preview below.
+                val closePanel = { if (tool != Tool.NONE) tool = Tool.NONE }
 
-                // the only flexible element: a panel floating over the preview.
-                // It is drawn last => on top of the preview, without moving it.
                 Box(
                     Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 4.dp),
+                        .size(side)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(.34f),
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(.14f),
+                                ),
+                            ),
+                        )
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outline.copy(.30f),
+                            RoundedCornerShape(12.dp),
+                        )
+                        .pointerInput(Unit) { detectTapGestures { closePanel() } },
+                    contentAlignment = Alignment.Center,
                 ) {
+                    when {
+                        loading -> LoadingState()
+                        error != null -> ErrorState(error)
+                        bitmap == null -> EmptyState(onPickImage)
+                        else -> EditorViewport(
+                            state = state,
+                            bitmap = bitmap,
+                            haptics = haptics,
+                            showGuides = guides || tool == Tool.CROP || tool == Tool.FRAME,
+                            onPreview = onPreview,
+                            onCommit = onCommit,
+                            onTapOutside = closePanel,
+                            // inset so the ratio window never touches the square frame
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(6.dp),
+                        )
+                    }
+
+                    // the only flexible element: a panel floating over the preview.
+                    // It is drawn last => on top of the preview, without moving anything.
                     // plain `if` on purpose: AnimatedVisibility would resolve to the
                     // ColumnScope overload here and fight the BoxScope receiver.
                     if (tool != Tool.NONE) {
-                        OverlayPanel(
-                            tool = tool,
-                            state = state,
-                            haptics = haptics,
-                            history = history,
-                            guidesOn = guides,
-                            onGuides = { guides = !guides },
-                            onAspect = onAspect,
-                            onReset = onReset,
-                            onAlign = onAlign,
-                            onPadding = onPadding,
-                            onCorner = onCorner,
-                            onShadow = onShadow,
-                            onBackground = onBackground,
-                            onAmbient = onAmbient,
-                            onScaleMode = onScaleMode,
-                            onRotatePreview = onRotatePreview,
-                            onRotateCommit = onRotateCommit,
-                            onResetAll = onResetAll,
-                            onFlipH = onFlipH,
-                            onFlipV = onFlipV,
-                            onText = onText,
-                            onTextPosition = onTextPosition,
-                            onTextStyle = onTextStyle,
-                            onTextSize = onTextSize,
-                            onDone = { tool = Tool.NONE },
-                            onOpenHistory = onOpenHistory,
-                            onDeleteHistory = onDeleteHistory,
-                            thumbPath = thumbPath,
-                        )
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 4.dp),
+                        ) {
+                            OverlayPanel(
+                                tool = tool,
+                                state = state,
+                                haptics = haptics,
+                                history = history,
+                                guidesOn = guides,
+                                onGuides = { guides = !guides },
+                                onAspect = onAspect,
+                                onReset = onReset,
+                                onAlign = onAlign,
+                                onPadding = onPadding,
+                                onCorner = onCorner,
+                                onShadow = onShadow,
+                                onBackground = onBackground,
+                                onAmbient = onAmbient,
+                                onScaleMode = onScaleMode,
+                                onRotatePreview = onRotatePreview,
+                                onRotateCommit = onRotateCommit,
+                                onResetAll = onResetAll,
+                                onFlipH = onFlipH,
+                                onFlipV = onFlipV,
+                                onText = onText,
+                                onTextPosition = onTextPosition,
+                                onTextStyle = onTextStyle,
+                                onTextSize = onTextSize,
+                                onTextAlign = onTextAlign,
+                                onDone = { tool = Tool.NONE },
+                                onOpenHistory = onOpenHistory,
+                                onDeleteHistory = onDeleteHistory,
+                                thumbPath = thumbPath,
+                            )
+                        }
                     }
                 }
             }
@@ -707,6 +713,7 @@ private fun OverlayPanel(
     onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
+    onTextAlign: (TextAlign) -> Unit,
     onDone: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -813,7 +820,14 @@ private fun OverlayPanel(
                 }
             }
 
-            Tool.TEXT -> TextPanel(state, onText, onTextPosition, onTextStyle, onTextSize)
+            Tool.TEXT -> TextPanel(
+                state = state,
+                onText = onText,
+                onTextPosition = onTextPosition,
+                onTextStyle = onTextStyle,
+                onTextSize = onTextSize,
+                onTextAlign = onTextAlign,
+            )
 
             Tool.MIRROR -> {
                 SectionTitle(ctx.getString(R.string.panel_mirror_title))
@@ -1198,6 +1212,7 @@ private fun TextPanel(
     onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
+    onTextAlign: (TextAlign) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
@@ -1242,8 +1257,9 @@ private fun TextPanel(
                 .focusRequester(focus),
         )
     }
-    Spacer(Modifier.height(7.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+    Spacer(Modifier.height(6.dp))
+    // two rows so the chip row never overflows the card: position, then align/style/paste
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         PillToggle(ctx.getString(R.string.text_position_top), state.text.position == TextPosition.TOP_CENTER) {
             onTextPosition(TextPosition.TOP_CENTER)
         }
@@ -1258,11 +1274,63 @@ private fun TextPanel(
             onTextStyle(TextStylePreset.BLACK_ON_WHITE)
         }
     }
+    Spacer(Modifier.height(5.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        AlignChip(TextAlign.LEFT, state.text.align == TextAlign.LEFT, onTextAlign) {
+            FloatIcons.AlignLines(tint = if (state.text.align == TextAlign.LEFT) scheme.primary else scheme.onSurfaceVariant)
+        }
+        AlignChip(TextAlign.CENTER, state.text.align == TextAlign.CENTER, onTextAlign) {
+            FloatIcons.AlignCenter(tint = if (state.text.align == TextAlign.CENTER) scheme.primary else scheme.onSurfaceVariant)
+        }
+        AlignChip(TextAlign.RIGHT, state.text.align == TextAlign.RIGHT, onTextAlign) {
+            FloatIcons.AlignLines(right = true, tint = if (state.text.align == TextAlign.RIGHT) scheme.primary else scheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.weight(1f))
+        PillToggle(ctx.getString(R.string.action_paste), false) {
+            val pasted = clipboard.getText()?.text?.replace("\n", " ")
+            if (!pasted.isNullOrBlank()) {
+                val next = pasted.take(80)
+                value = next
+                onText(next)
+            }
+        }
+    }
     SliderRow(
         ctx.getString(R.string.label_size),
         state.text.sizeFraction * 1000f,
         30f..140f,
     ) { onTextSize(it / 1000f) }
+}
+
+/** Small square toggle used by the text alignment row. */
+@Composable
+private fun AlignChip(
+    align: TextAlign,
+    active: Boolean,
+    onAlign: (TextAlign) -> Unit,
+    icon: @Composable () -> Unit,
+) {
+    val ctx = LocalContext.current
+    val label = when (align) {
+        TextAlign.LEFT -> ctx.getString(R.string.text_align_left)
+        TextAlign.CENTER -> ctx.getString(R.string.text_align_center)
+        TextAlign.RIGHT -> ctx.getString(R.string.text_align_right)
+    }
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        Modifier
+            .size(30.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(if (active) scheme.primaryContainer else scheme.surface)
+            .border(
+                if (active) 1.5.dp else 1.dp,
+                if (active) scheme.primary else scheme.outline.copy(.5f),
+                RoundedCornerShape(9.dp),
+            )
+            .semantics { contentDescription = label }
+            .clickable { onAlign(align) },
+        contentAlignment = Alignment.Center,
+    ) { icon() }
 }
 
 @Composable

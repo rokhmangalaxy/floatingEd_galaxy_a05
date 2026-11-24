@@ -390,4 +390,42 @@ object FloatIcons {
             line(11.5f, 14.6f, 15.2f, 9.6f, s, c, 1.8f)
         }
     }
+
+    /** Text alignment glyph: three lines anchored either left or right. */
+    @Composable
+    fun AlignLines(right: Boolean = false, modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(18.dp)) {
+            val s = size.minDimension / VIEW
+            line(4f, 6f, 20f, 6f, s, c, 1.9f)
+            if (right) line(10f, 12f, 20f, 12f, s, c, 1.9f)
+            else line(4f, 12f, 14f, 12f, s, c, 1.9f)
+            line(4f, 18f, 20f, 18f, s, c, 1.9f)
+        }
+    }
+
+    /** Centered alignment: three lines, all centered. */
+    @Composable
+    fun AlignCenter(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(18.dp)) {
+            val s = size.minDimension / VIEW
+            line(4f, 6f, 20f, 6f, s, c, 1.9f)
+            line(7f, 12f, 17f, 12f, s, c, 1.9f)
+            line(4f, 18f, 20f, 18f, s, c, 1.9f)
+        }
+    }
+
+    /** Paste from the system clipboard. */
+    @Composable
+    fun Paste(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(20.dp)) {
+            val s = size.minDimension / VIEW
+            roundRectStroke(5f, 4.5f, 19f, 21f, 2.4f, s, c, 1.7f)
+            roundRectStroke(8.8f, 2.2f, 15.2f, 7.2f, 1.4f, s, c, 1.7f)
+            line(8.5f, 11.5f, 15.5f, 11.5f, s, c, 1.5f)
+            line(8.5f, 15.5f, 13.5f, 15.5f, s, c, 1.5f)
+        }
+    }
 }

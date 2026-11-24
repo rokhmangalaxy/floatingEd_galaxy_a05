@@ -47,6 +47,10 @@ data class BackgroundSpec(
 @Serializable
 enum class TextPosition { TOP_CENTER, BOTTOM_CENTER }
 
+/** Horizontal alignment of the caption inside its line box. */
+@Serializable
+enum class TextAlign { LEFT, CENTER, RIGHT }
+
 @Serializable
 enum class TextStylePreset { WHITE_ON_BLACK, BLACK_ON_WHITE }
 
@@ -56,6 +60,8 @@ data class TextOverlay(
     val position: TextPosition = TextPosition.BOTTOM_CENTER,
     val style: TextStylePreset = TextStylePreset.WHITE_ON_BLACK,
     val sizeFraction: Float = 0.075f,
+    /** left / center / right inside the frame; defaults to centered */
+    val align: TextAlign = TextAlign.CENTER,
 ) {
     val isVisible: Boolean get() = text.isNotBlank()
 }

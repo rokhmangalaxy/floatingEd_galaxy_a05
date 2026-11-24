@@ -93,4 +93,8 @@
     <string name="reset_done">Picture restored to original</string>
     <string name="bubble_failed">Could not create the bubble. Check "Display over other apps" permission and try again.</string>
     <string name="rotation_format">%1$d°</string>
+    <string name="action_paste">Paste</string>
+    <string name="text_align_left">Align left</string>
+    <string name="text_align_center">Align center</string>
+    <string name="text_align_right">Align right</string>
 </resources>
