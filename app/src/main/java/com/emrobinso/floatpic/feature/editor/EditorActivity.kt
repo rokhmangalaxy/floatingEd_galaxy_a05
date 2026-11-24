@@ -232,11 +232,13 @@ class EditorActivity : ComponentActivity() {
                 historyIndex = if (id == null) -1 else history.indexOfFirst { it.id == id }
             }
 
-            // A newly opened picture (shared from another app, picked, or the AI base) writes
-            // its own history row straight away, so nothing the user touched ever goes missing.
+            // A newly opened picture (shared from another app or picked) writes its own
+            // history row straight away. The bundled sample shown on a cold start is NOT a
+            // picture the user chose, so it stays out of history until something is edited.
             LaunchedEffect(ui.loading, vm.source) {
                 if (ui.loading || vm.source == null) return@LaunchedEffect
                 if (currentSessionId != null) return@LaunchedEffect
+                if (isFreshOpen()) return@LaunchedEffect
                 delay(400)
                 val entry = autosave(force = true)
                 if (entry != null) refreshHistory()
@@ -636,9 +638,9 @@ class EditorActivity : ComponentActivity() {
      */
     private suspend fun autosave(force: Boolean = false): HistoryEntry? = withContext(NonCancellable) {
         val bmp = vm.source ?: return@withContext null
-        // A brand new picture gets one row even before any edit (requirement: every shared
-        // picture lands in history). Later autosaves only run for real edits.
-        val firstRow = currentSessionId == null
+        // A brand new SHARED picture gets one row even before any edit. The launcher sample
+        // (default preview) does not: it only appears once it has been edited.
+        val firstRow = currentSessionId == null && !isFreshOpen()
         if (!firstRow && !vm.hasRealEdits()) return@withContext null
         // What the row shows must be what the user sees: the edited picture. The state is
         // stored alongside it, so reopening a row restores the same look (and AI still gets

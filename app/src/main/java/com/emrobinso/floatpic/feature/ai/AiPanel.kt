@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -313,8 +314,9 @@ fun AiPanel(
             Box(
                 Modifier
                     .weight(1f)
-                    // grows with the text (2 lines minimum, ~8 lines before it scrolls)
-                    .heightIn(min = 48.dp, max = 132.dp)
+                    // FIXED height: the field scrolls inside itself. Letting it grow pushed
+                    // the Proses button and the result tray off the bottom of the panel.
+                    .height(60.dp)
                     .clip(RoundedCornerShape(11.dp))
                     .background(scheme.surface)
                     .border(1.dp, scheme.outline.copy(.5f), RoundedCornerShape(11.dp))
@@ -326,16 +328,21 @@ fun AiPanel(
                         ctx.getString(R.string.panel_ai_hint),
                         fontSize = 11.sp,
                         lineHeight = 14.sp,
+                        maxLines = 3,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         color = scheme.onSurfaceVariant.copy(.55f),
                     )
                 }
                 BasicTextField(
                     value = session.prompt,
-                    // no character limit: the prompt is free text
+                    // no character limit: the prompt is free text, the box scrolls instead
                     onValueChange = { session.prompt = it },
                     singleLine = false,
                     textStyle = TextStyle(fontSize = 12.sp, color = scheme.onSurface, lineHeight = 15.sp),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
                 )
             }
             Spacer(Modifier.width(6.dp))
