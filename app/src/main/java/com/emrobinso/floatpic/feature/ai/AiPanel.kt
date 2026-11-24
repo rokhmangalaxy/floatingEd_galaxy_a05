@@ -23,11 +23,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,15 +44,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.data.AiEditClient
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** One finished run: the bitmap plus the prompt that produced it. */
 data class AiCandidate(val bitmap: Bitmap, val prompt: String, val lora: String?)
 
 /**
- * AI panel. Deliberately a "tray": every run is kept in [results], the newest one is the
- * applied picture (last wins), and older ones stay tappable so the user can go back to a
- * better result without spending another request.
+ * AI panel.
+ *
+ * Session rules the user asked for:
+ *  - the panel starts EMPTY every time it is opened (input, button and spinner are reset),
+ *    which is why nothing here is remembered across a [Tool.AI] open/close;
+ *  - while a request runs a timer ticks, so a slow Space never looks frozen;
+ *  - the prompt box is a two line textarea;
+ *  - the last 10 prompts are kept as one-tap history chips.
+ *
+ * Results are a tray: the newest run immediately replaces the working picture (last wins)
+ * and older runs stay tappable.
  */
 @Composable
 fun AiPanel(
@@ -63,11 +74,33 @@ fun AiPanel(
     val scope = rememberCoroutineScope()
     val results = remember { mutableStateListOf<AiCandidate>() }
 
-    var prompt by remember { mutableStateOf("") }
-    var lora by remember { mutableStateOf<String?>(null) }
+    // saveable-only where it must survive a rotation, plain state where it must reset
+    var prompt by rememberSaveable { mutableStateOf("") }
+    var lora by rememberSaveable { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var stage by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var elapsed by remember { mutableStateOf(0) }
+
+    // ---- prompt history (10, newest first, transparently persisted) -------------------
+    var promptHistory by remember { mutableStateOf(AiPromptStore.load(ctx)) }
+
+    fun rememberPrompt(text: String) {
+        promptHistory = AiPromptStore.push(ctx, text)
+    }
+
+    // ---- timer: seconds since the request started ------------------------------------
+    LaunchedEffect(busy) {
+        if (!busy) {
+            elapsed = 0
+            return@LaunchedEffect
+        }
+        val start = System.currentTimeMillis()
+        while (busy) {
+            elapsed = ((System.currentTimeMillis() - start) / 1000L).toInt()
+            delay(200)
+        }
+    }
 
     fun run(correction: String?) {
         val bmp = source ?: return
@@ -78,11 +111,14 @@ fun AiPanel(
         if (busy) return
         busy = true
         error = null
+        results.clear()
+        rememberPrompt(prompt)
         stage = ctx.getString(R.string.ai_uploading)
+        val sentPrompt = prompt
         scope.launch {
             val res = AiEditClient.edit(
                 source = bmp,
-                prompt = prompt,
+                prompt = sentPrompt,
                 lora = lora,
                 correction = correction,
                 onStage = { s ->
@@ -93,9 +129,11 @@ fun AiPanel(
             busy = false
             when (res) {
                 is AiEditClient.Result.Ok -> {
-                    results.add(0, AiCandidate(res.bitmap, prompt, lora))
+                    results.add(0, AiCandidate(res.bitmap, sentPrompt, lora))
                     // last result wins: it immediately replaces the working picture
                     onApply(res.bitmap)
+                    // the request is done: the panel goes back to its empty, ready state
+                    prompt = ""
                     onInfo(ctx.getString(R.string.ai_done))
                 }
                 is AiEditClient.Result.Failed -> {
@@ -115,31 +153,48 @@ fun AiPanel(
         )
         Spacer(Modifier.height(5.dp))
 
-        // prompt box (no auto-focus: opening the panel must not pop the keyboard)
+        // prompt box: TWO lines, no auto-focus (opening the panel must not pop the keyboard)
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(40.dp)
+                .height(48.dp)
                 .clip(RoundedCornerShape(11.dp))
                 .background(scheme.surface)
                 .border(1.dp, scheme.outline.copy(.5f), RoundedCornerShape(11.dp))
-                .padding(horizontal = 10.dp),
-            contentAlignment = Alignment.CenterStart,
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            contentAlignment = Alignment.TopStart,
         ) {
             if (prompt.isEmpty()) {
                 Text(
-                    "contoh: buat latar jadi pantai saat senja",
+                    ctx.getString(R.string.panel_ai_hint),
                     fontSize = 11.sp,
+                    lineHeight = 14.sp,
                     color = scheme.onSurfaceVariant.copy(.55f),
                 )
             }
             BasicTextField(
                 value = prompt,
-                onValueChange = { if (it.length <= 300) prompt = it },
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 12.sp, color = scheme.onSurface),
+                onValueChange = { if (it.length <= 150) prompt = it },
+                singleLine = false,
+                maxLines = 2,
+                textStyle = TextStyle(fontSize = 12.sp, color = scheme.onSurface, lineHeight = 15.sp),
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+
+        if (promptHistory.isNotEmpty()) {
+            Spacer(Modifier.height(5.dp))
+            // 10 last prompts: tap to reuse, long press would be nicer but a tap is enough
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                promptHistory.forEach { item ->
+                    PromptChip(item) { prompt = item }
+                }
+            }
         }
 
         Spacer(Modifier.height(6.dp))
@@ -154,7 +209,10 @@ fun AiPanel(
         }
 
         Spacer(Modifier.height(7.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             RunChip(
                 label = ctx.getString(R.string.ai_run),
                 enabled = !busy,
@@ -166,11 +224,15 @@ fun AiPanel(
                     strokeWidth = 2.dp,
                     color = scheme.primary,
                 )
-                Text(stage, fontSize = 10.sp, color = scheme.onSurfaceVariant)
+                Text(
+                    "${stage} ${elapsed}s",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = scheme.onSurfaceVariant,
+                )
             } else if (results.isNotEmpty()) {
-                // cheap re-roll with feedback: "make it brighter, keep the face"
                 RunChip(
-                    label = "Perbaiki",
+                    label = ctx.getString(R.string.ai_retry),
                     enabled = true,
                     onClick = { run("keep the composition, improve on the previous attempt") },
                 )
@@ -194,7 +256,6 @@ fun AiPanel(
                 color = scheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
-            // THE TRAY: every generated picture, newest first. Tap = make it the working one.
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -233,6 +294,23 @@ fun AiPanel(
             color = scheme.onSurfaceVariant,
         )
     }
+}
+
+/** One saved prompt. Tap = put it back into the box. */
+@Composable
+private fun PromptChip(text: String, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Text(
+        text = if (text.length > 26) text.take(25) + "…" else text,
+        fontSize = 9.sp,
+        maxLines = 1,
+        color = scheme.onSurfaceVariant,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(scheme.surfaceVariant.copy(.7f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
 }
 
 @Composable

@@ -31,6 +31,8 @@ data class UiState(
     val savedTick: Int = 0,
     /** true once the user changed anything since the last history record */
     val dirty: Boolean = false,
+    /** an AI run swapped the picture, so there is always something worth keeping */
+    val sourceReplaced: Boolean = false,
 )
 
 class EditorViewModel : ViewModel() {
@@ -80,6 +82,7 @@ class EditorViewModel : ViewModel() {
                             canUndo = false,
                             canRedo = false,
                             dirty = false,
+                            sourceReplaced = false,
                         )
                     }
                 }
@@ -120,6 +123,18 @@ class EditorViewModel : ViewModel() {
     fun setTheme(theme: AppTheme) = _ui.update { it.copy(theme = theme) }
 
     fun isDirty(): Boolean = _ui.value.dirty
+
+    /**
+     * True only when the user actually changed the picture. The bundled sample opens with a
+     * pristine [EditorState]; that preview must NOT be written to history just because the
+     * editor was opened and left again.
+     */
+    fun hasRealEdits(): Boolean {
+        val ui = _ui.value
+        val s = ui.state
+        if (ui.sourceReplaced) return true
+        return s != EditorState()
+    }
 
     /** Called after the session was written to [com.emrobinso.floatpic.data.HistoryStore]. */
     fun markSaved() = _ui.update { it.copy(dirty = false) }
@@ -250,8 +265,25 @@ class EditorViewModel : ViewModel() {
         it.copy(text = it.text.copy(anchor = anchor))
     }
 
-    fun setTextRotation(rotation: com.emrobinso.floatpic.core.model.TextRotation) = mutate {
-        it.copy(text = it.text.copy(rotation = rotation))
+    /** Caption rotation in degrees; the slider reports continuously, so no history per px. */
+    fun previewTextRotation(deg: Float) {
+        _ui.update {
+            it.copy(state = it.state.copy(text = it.text.copy(rotation = deg)), dirty = true)
+        }
+    }
+
+    /** Slider released: single undo step. */
+    fun commitTextRotation(deg: Float) {
+        pushHistory()
+        _ui.update {
+            it.copy(
+                state = it.state.copy(text = it.text.copy(rotation = deg)),
+                canUndo = true,
+                canRedo = false,
+                dirty = true,
+            )
+        }
+        committed = _ui.value.state
     }
 
     /** Swaps the whole picture for an AI result (keeps undo + history working). */
@@ -268,6 +300,7 @@ class EditorViewModel : ViewModel() {
                 canUndo = true,
                 canRedo = false,
                 dirty = true,
+                sourceReplaced = true,
             )
         }
         committed = _ui.value.state

@@ -163,16 +163,22 @@ object AiEditClient {
             if (code !in 200..299) {
                 throw IOException("HTTP $code ${text.take(160)}")
             }
+            // v2 answers {"event_id": "..."}; older builds answered a bare ""evt""
             val obj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
-                ?: return null
-            obj["event_id"]?.jsonPrimitive?.safeContent()
+            val fromObject = obj?.get("event_id")?.jsonPrimitive?.safeContent()
+            obj?.get("error")?.jsonPrimitive?.safeContent()?.let { throw IOException(it) }
+            fromObject ?: runCatching {
+                json.parseToJsonElement(text).jsonPrimitive.content
+            }.getOrNull()
         } finally {
             conn.disconnect()
         }
     }
 
     private suspend fun poll(url: String): JsonObject? {
-        val deadline = System.currentTimeMillis() + 6 * 60 * 1000
+        // hard ceiling: the panel shows a live timer, so the user can always see it is
+        // working; after this we fail loudly instead of spinning forever.
+        val deadline = System.currentTimeMillis() + 5 * 60 * 1000
         while (System.currentTimeMillis() < deadline) {
             val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"

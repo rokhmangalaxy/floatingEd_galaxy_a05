@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -48,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,7 +59,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -66,6 +70,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.core.image.ImageLoader
 import com.emrobinso.floatpic.data.AiEditClient
+import kotlin.math.roundToInt
 import com.emrobinso.floatpic.data.DraftStore
 import com.emrobinso.floatpic.data.Exporter
 import com.emrobinso.floatpic.data.HistoryEntry
@@ -165,8 +170,13 @@ class EditorActivity : ComponentActivity() {
             val ui by vm.ui.collectAsState()
             val scope = rememberCoroutineScope()
             var showMinimizePrompt by remember { mutableStateOf(false) }
-            // floating card position: drag the handle at the top to move it around
-            var cardOffset by remember { mutableStateOf(Offset.Zero) }
+            // floating card position: dragging the grabber moves the whole card. Stored in
+            // px so it can be clamped against the real window size, and held in saveable
+            // state so a rotation/recreation does not snap the card back to the centre.
+            var cardOffset by rememberSaveable { mutableStateOf(Offset.Zero) }
+            val density = LocalDensity.current
+            val maxShiftX = with(density) { ((resources.displayMetrics.widthPixels / density) * 0.15f / 2f).toPx() }
+            val maxShiftY = with(density) { ((screenMaxHeight * 0.18f) / 2f).toPx() }
             var history by remember { mutableStateOf<List<com.emrobinso.floatpic.data.HistoryEntry>>(emptyList()) }
             val enter by animateFloatAsState(1f, tween(220), label = "enter")
             val ctx = LocalContext.current
@@ -183,7 +193,8 @@ class EditorActivity : ComponentActivity() {
             // more when the editor leaves the foreground. The row is updated in place, so
             // a single picture never fills the history with duplicates.
             LaunchedEffect(ui.state, ui.dirty, ui.loading) {
-                if (!ui.dirty || ui.loading || vm.source == null) return@LaunchedEffect
+                // the untouched preview must never enter history: no edits = nothing to store
+                if (!ui.dirty || ui.loading || vm.source == null || !vm.hasRealEdits()) return@LaunchedEffect
                 delay(1200)
                 val entry = autosave()
                 if (entry != null) refreshHistory()
@@ -198,12 +209,11 @@ class EditorActivity : ComponentActivity() {
                 ) {
                     Box(
                         Modifier
+                            .offset { IntOffset(cardOffset.x.roundToInt(), cardOffset.y.roundToInt()) }
                             .graphicsLayer {
                                 scaleX = 0.94f + 0.06f * enter
                                 scaleY = 0.94f + 0.06f * enter
                                 alpha = enter
-                                translationX = cardOffset.x
-                                translationY = cardOffset.y
                             }
                             .fillMaxWidth(0.80f)
                             // hug the content instead of a fixed 70% block: the tall empty
@@ -216,18 +226,23 @@ class EditorActivity : ComponentActivity() {
                                 onClick = {},
                             ),
                     ) {
-                        androidx.compose.foundation.layout.Column {
-                        // DRAG HANDLE: a slim grabber on top of the card. Drag it to move the
-                        // whole floating editor. Everything else keeps its own gestures.
+                        Column {
+                        // DRAG HANDLE: a wide, obviously grabbable strip on top of the card.
+                        // It is its own Box (not part of the editor), so its gesture can never
+                        // be swallowed by the preview's pan/zoom detector.
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .height(22.dp)
+                                .height(26.dp)
                                 .pointerInput(Unit) {
                                     detectDragGestures(
+                                        onDragStart = { haptics.tick() },
                                         onDrag = { change, drag ->
                                             change.consume()
-                                            cardOffset += drag
+                                            cardOffset = Offset(
+                                                (cardOffset.x + drag.x).coerceIn(-maxShiftX, maxShiftX),
+                                                (cardOffset.y + drag.y).coerceIn(-maxShiftY, maxShiftY),
+                                            )
                                         },
                                     )
                                 },
@@ -235,9 +250,9 @@ class EditorActivity : ComponentActivity() {
                         ) {
                             Box(
                                 Modifier
-                                    .size(width = 34.dp, height = 4.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)),
+                                    .size(width = 44.dp, height = 5.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)),
                             )
                         }
                         EditorScreen(
@@ -256,7 +271,7 @@ class EditorActivity : ComponentActivity() {
                             // first (non-cancellable), then leave — otherwise the row you
                             // just edited disappears from history
                             onClose = {
-                                if (vm.isDirty()) {
+                                if (vm.isDirty() && vm.hasRealEdits()) {
                                     lifecycleScope.launch {
                                         withContext(NonCancellable) { autosave(force = true) }
                                         finish()
@@ -321,11 +336,11 @@ class EditorActivity : ComponentActivity() {
                             onFlipH = vm::flipHorizontal,
                             onFlipV = vm::flipVertical,
                             onText = vm::setText,
-                            onTextPosition = vm::setTextPosition,
                             onTextStyle = vm::setTextStyle,
                             onTextSize = vm::setTextSize,
                             onTextAnchor = vm::setTextAnchor,
-                            onTextRotation = vm::setTextRotation,
+                            onTextRotationPreview = vm::previewTextRotation,
+                            onTextRotationCommit = vm::commitTextRotation,
                             onAiApply = { bmp ->
                                 // last AI result wins: it becomes the working picture, and
                                 // undo takes you straight back to the previous one.
@@ -374,7 +389,8 @@ class EditorActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         // last-chance autosave: covers "user just closed the card / swiped away"
-        if (vm.isDirty()) {
+        // Only real edits are worth a history row; the untouched preview is not.
+        if (vm.isDirty() && vm.hasRealEdits()) {
             lifecycleScope.launch { withContext(NonCancellable) { autosave(force = true) } }
         }
     }
@@ -503,6 +519,8 @@ class EditorActivity : ComponentActivity() {
      */
     private suspend fun autosave(force: Boolean = false): HistoryEntry? = withContext(NonCancellable) {
         val bmp = vm.source ?: return@withContext null
+        // Default preview / "reset to original" is not worth a history row.
+        if (!vm.hasRealEdits()) return@withContext null
         if (!force && !vm.isDirty()) return@withContext null
         val entry = HistoryStore.record(
             context = this@EditorActivity,
@@ -521,6 +539,16 @@ class EditorActivity : ComponentActivity() {
 
     private suspend fun recordHistory() {
         autosave(force = true)
+    }
+
+    /** True when this Activity was opened by "+" in the app (no shared picture). */
+    private fun isFreshOpen(): Boolean {
+        val i = intent ?: return true
+        if (i.getStringExtra(EXTRA_RESTORE_SESSION) != null) return false
+        return when (i.action) {
+            Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE, Intent.ACTION_VIEW, Intent.ACTION_EDIT -> false
+            else -> ShareIntents.singleUri(i) == null
+        }
     }
 
     private fun renderCurrent(): Bitmap? {

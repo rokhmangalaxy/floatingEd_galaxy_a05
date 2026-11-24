@@ -41,6 +41,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,10 +76,8 @@ import com.emrobinso.floatpic.core.model.BackgroundKind
 import com.emrobinso.floatpic.core.model.BackgroundSpec
 import com.emrobinso.floatpic.core.model.EditorState
 import com.emrobinso.floatpic.core.model.ScaleMode
-import com.emrobinso.floatpic.core.model.TextPosition
 import com.emrobinso.floatpic.core.model.TextAlign
 import com.emrobinso.floatpic.core.model.TextAnchor
-import com.emrobinso.floatpic.core.model.TextRotation
 import com.emrobinso.floatpic.feature.ai.AiPanel
 import com.emrobinso.floatpic.core.model.TextStylePreset
 import com.emrobinso.floatpic.core.model.Transform
@@ -158,11 +158,11 @@ fun EditorScreen(
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
     onText: (String) -> Unit,
-    onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
     onTextAnchor: (TextAnchor) -> Unit,
-    onTextRotation: (TextRotation) -> Unit,
+    onTextRotationPreview: (Float) -> Unit,
+    onTextRotationCommit: (Float) -> Unit,
     onAiApply: (Bitmap) -> Unit,
     onInfo: (String) -> Unit,
     onPickImage: () -> Unit,
@@ -174,6 +174,8 @@ fun EditorScreen(
 ) {
     var tool by remember { mutableStateOf(Tool.NONE) }
     var guides by remember { mutableStateOf(false) }
+    // bumped on every AI open; used as the panel's `key` so reopening starts from scratch
+    var aiSession by remember { mutableIntStateOf(0) }
     val extra = LocalExtra.current
     val scheme = MaterialTheme.colorScheme
     val radius = extra.cardRadius.dp
@@ -302,11 +304,11 @@ fun EditorScreen(
                                 onFlipH = onFlipH,
                                 onFlipV = onFlipV,
                                 onText = onText,
-                                onTextPosition = onTextPosition,
                                 onTextStyle = onTextStyle,
                                 onTextSize = onTextSize,
                                 onTextAnchor = onTextAnchor,
-                                onTextRotation = onTextRotation,
+                                onTextRotationPreview = onTextRotationPreview,
+                                onTextRotationCommit = onTextRotationCommit,
                                 onAiApply = onAiApply,
                                 onInfo = onInfo,
                                 onDone = { tool = Tool.NONE },
@@ -322,7 +324,12 @@ fun EditorScreen(
             // ---- icon row (always visible, never shifts) ---------------------------
             ToolRow(
                 active = tool,
-                onTool = { haptics.tick(); tool = if (tool == it) Tool.NONE else it },
+                onTool = {
+                    haptics.tick()
+                    val next = if (tool == it) Tool.NONE else it
+                    if (next == Tool.AI) aiSession++
+                    tool = next
+                },
             )
 
             ActionBar(onSave = onSave, onShare = onShare)
@@ -474,39 +481,25 @@ private fun RowScope.ToolSlot(
 
 @Composable
 private fun ToolRow(active: Tool, onTool: (Tool) -> Unit) {
-    // 9 tools, two balanced rows: every slot is a plain RowScope item, so nothing depends
-    // on a nested composable scope (toolItem is a RowScope extension).
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ToolSlot(Tool.RATIO, active, onTool)
-            ToolSlot(Tool.CROP, active, onTool)
-            ToolSlot(Tool.FRAME, active, onTool)
-            ToolSlot(Tool.BACKGROUND, active, onTool)
-            ToolSlot(Tool.TEXT, active, onTool)
-        }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ToolSlot(Tool.MIRROR, active, onTool)
-            ToolSlot(Tool.ROTATE, active, onTool)
-            ToolSlot(Tool.AI, active, onTool)
-            ToolSlot(Tool.HISTORY, active, onTool)
-            ToolSlot(Tool.RESET, active, onTool)
-        }
+    // ONE horizontally scrollable dock instead of the cramped 2x5 grid. Chip style (rounded
+    // surface + label-free icon) makes the row read as a real toolbar.
+    val order = listOf(
+        Tool.RATIO, Tool.CROP, Tool.FRAME, Tool.BACKGROUND, Tool.TEXT,
+        Tool.MIRROR, Tool.ROTATE, Tool.AI, Tool.HISTORY, Tool.RESET,
+    )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        order.forEach { t -> ToolSlot(t, active, onTool) }
     }
 }
 
-/** icon-only slot: fixed 40dp square, so the row never reflows */
+/** One dock chip: rounded surface, fixed square, so the scroll row never jitters. */
 @Composable
 private fun RowScope.toolItem(
     label: String,
@@ -517,9 +510,17 @@ private fun RowScope.toolItem(
     val scheme = MaterialTheme.colorScheme
     Box(
         Modifier
-            .size(36.dp)
-            .clip(RoundedCornerShape(11.dp))
-            .background(if (active) scheme.primary else Color.Transparent)
+            .size(40.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(
+                if (active) scheme.primary
+                else scheme.surface.copy(alpha = 0.55f),
+            )
+            .border(
+                width = 1.dp,
+                color = if (active) Color.Transparent else scheme.outline.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(13.dp),
+            )
             .semantics { contentDescription = label }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -765,11 +766,11 @@ private fun OverlayPanel(
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
     onText: (String) -> Unit,
-    onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
     onTextAnchor: (TextAnchor) -> Unit,
-    onTextRotation: (TextRotation) -> Unit,
+    onTextRotationPreview: (Float) -> Unit,
+    onTextRotationCommit: (Float) -> Unit,
     onAiApply: (Bitmap) -> Unit,
     onInfo: (String) -> Unit,
     onDone: () -> Unit,
@@ -881,11 +882,11 @@ private fun OverlayPanel(
             Tool.TEXT -> TextPanel(
                 state = state,
                 onText = onText,
-                onTextPosition = onTextPosition,
                 onTextStyle = onTextStyle,
                 onTextSize = onTextSize,
                 onTextAnchor = onTextAnchor,
-                onTextRotation = onTextRotation,
+                onTextRotationPreview = onTextRotationPreview,
+                onTextRotationCommit = onTextRotationCommit,
             )
 
             Tool.MIRROR -> {
@@ -933,11 +934,13 @@ private fun OverlayPanel(
                 }
             }
 
-            Tool.AI -> AiPanel(
-                source = bitmap,
-                onApply = onAiApply,
-                onInfo = onInfo,
-            )
+            Tool.AI -> key(aiSession) {
+                AiPanel(
+                    source = bitmap,
+                    onApply = onAiApply,
+                    onInfo = onInfo,
+                )
+            }
 
             Tool.RATIO -> {
                 SectionTitle(ctx.getString(R.string.panel_ratio_title))
@@ -1100,17 +1103,32 @@ private fun BgKindChip(label: String, active: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+private fun SliderRow(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    detents: Int = 0,
+    onPreview: ((Float) -> Unit)? = null,
+    onCommit: ((Float) -> Unit)? = null,
+    onChange: (Float) -> Unit = {},
+) {
+    var live by remember { mutableStateOf(value) }
+    LaunchedEffect(value) { live = value }
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth()) {
             Text(label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
-            Text("${value.toInt()}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${live.toInt()}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Slider(
-            value = value.coerceIn(range),
-            onValueChange = onChange,
+            value = live.coerceIn(range),
+            onValueChange = { v ->
+                live = v
+                if (onPreview != null) onPreview(v) else onChange(v)
+            },
+            onValueChangeFinished = { onCommit?.invoke(live.coerceIn(range)) },
             valueRange = range,
+            steps = detents,
             modifier = Modifier.height(26.dp),
         )
     }
@@ -1274,33 +1292,68 @@ private fun AlignGrid(onAlign: (Float, Float) -> Unit) {
 private fun TextPanel(
     state: EditorState,
     onText: (String) -> Unit,
-    onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
     onTextAnchor: (TextAnchor) -> Unit,
-    onTextRotation: (TextRotation) -> Unit,
+    onTextRotationPreview: (Float) -> Unit,
+    onTextRotationCommit: (Float) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
-    val focus = remember { FocusRequester() }
     val clipboard = LocalClipboardManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var value by remember { mutableStateOf(state.text.text) }
     // NOTE: no auto-focus on purpose. Requesting focus when the panel opens popped the
-    // keyboard immediately, which covered the preview. The keyboard now appears only when
-    // the user taps the field; paste fills the field programmatically without focusing.
+    // keyboard immediately, which covered most of the floating card.
 
-    SectionTitle(ctx.getString(R.string.panel_text_title))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        SectionTitle(ctx.getString(R.string.panel_text_title))
+        Spacer(Modifier.weight(1f))
+        // Paste lives next to the title, where it is always visible — the old one was
+        // squeezed into the chip row and effectively disappeared.
+        Box(
+            Modifier
+                .height(28.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(scheme.primary.copy(alpha = 0.16f))
+                .border(1.dp, scheme.primary.copy(alpha = 0.55f), RoundedCornerShape(9.dp))
+                .padding(horizontal = 9.dp)
+                .semantics { contentDescription = ctx.getString(R.string.action_paste) }
+                .clickable {
+                    val pasted = clipboard.getText()?.text?.replace("\n", " ")?.trim()
+                    if (!pasted.isNullOrBlank()) {
+                        val next = pasted.take(120)
+                        value = next
+                        onText(next)
+                        keyboard?.hide()
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FloatIcons.Paste(tint = scheme.primary)
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    ctx.getString(R.string.action_paste),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = scheme.primary,
+                )
+            }
+        }
+    }
     Spacer(Modifier.height(5.dp))
+
+    // two-line caption box (the old single line hid long captions behind a scroll)
     Box(
         Modifier
             .fillMaxWidth()
-            .height(42.dp)
+            .height(54.dp)
             .clip(RoundedCornerShape(11.dp))
             .background(scheme.surface)
             .border(1.dp, scheme.outline.copy(.5f), RoundedCornerShape(11.dp))
-            .padding(horizontal = 11.dp),
-        contentAlignment = Alignment.CenterStart,
+            .padding(horizontal = 11.dp, vertical = 7.dp),
+        contentAlignment = Alignment.TopStart,
     ) {
         if (value.isEmpty()) {
             Text(
@@ -1312,125 +1365,90 @@ private fun TextPanel(
         BasicTextField(
             value = value,
             onValueChange = {
-                if (it.length <= 80) {
+                if (it.length <= 120) {
                     value = it
                     onText(it)
                 }
             },
             textStyle = TextStyle(fontSize = 12.sp, color = scheme.onSurface),
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focus),
+            singleLine = false,
+            maxLines = 2,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
     Spacer(Modifier.height(6.dp))
-    // two rows so the chip row never overflows the card: position, then align/style/paste
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        PillToggle(ctx.getString(R.string.text_position_top), state.text.position == TextPosition.TOP_CENTER) {
-            onTextPosition(TextPosition.TOP_CENTER)
-        }
-        PillToggle(ctx.getString(R.string.text_position_bottom), state.text.position == TextPosition.BOTTOM_CENTER) {
-            onTextPosition(TextPosition.BOTTOM_CENTER)
-        }
+
+    // POSITION: the same 3x3 dot grid as the picture-position tool, but for the caption.
+    // Top row = above, middle = centred, bottom = below; left/centre/right horizontally.
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            ctx.getString(R.string.label_text_position),
+            fontSize = 10.sp,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(8.dp))
+        PositionGrid(selected = state.text.anchor, onPick = onTextAnchor)
         Spacer(Modifier.weight(1f))
         StyleChip("A", Color.White, Color.Black, state.text.style == TextStylePreset.WHITE_ON_BLACK) {
             onTextStyle(TextStylePreset.WHITE_ON_BLACK)
         }
+        Spacer(Modifier.width(5.dp))
         StyleChip("A", Color.Black, Color.White, state.text.style == TextStylePreset.BLACK_ON_WHITE) {
             onTextStyle(TextStylePreset.BLACK_ON_WHITE)
         }
     }
-    Spacer(Modifier.height(5.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        // these place the WHOLE text block against the frame edge / centre
-        AnchorChip(ctx.getString(R.string.text_anchor_left), state.text.anchor == TextAnchor.LEFT,
-            onAnchor = { onTextAnchor(TextAnchor.LEFT) }) {
-            FloatIcons.AlignLines(tint = if (state.text.anchor == TextAnchor.LEFT) scheme.primary else scheme.onSurfaceVariant)
-        }
-        AnchorChip(ctx.getString(R.string.text_anchor_center), state.text.anchor == TextAnchor.CENTER,
-            onAnchor = { onTextAnchor(TextAnchor.CENTER) }) {
-            FloatIcons.AlignCenter(tint = if (state.text.anchor == TextAnchor.CENTER) scheme.primary else scheme.onSurfaceVariant)
-        }
-        AnchorChip(ctx.getString(R.string.text_anchor_right), state.text.anchor == TextAnchor.RIGHT,
-            onAnchor = { onTextAnchor(TextAnchor.RIGHT) }) {
-            FloatIcons.AlignLines(right = true, tint = if (state.text.anchor == TextAnchor.RIGHT) scheme.primary else scheme.onSurfaceVariant)
-        }
-        Spacer(Modifier.width(4.dp))
-        // caption rotation: four quarter turns
-        TextRotation.entries.forEach { rot ->
-            val active = state.text.rotation == rot
-            Box(
-                Modifier
-                    .height(30.dp)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(if (active) scheme.primary else scheme.surface)
-                    .border(
-                        1.dp,
-                        if (active) Color.Transparent else scheme.outline.copy(.45f),
-                        RoundedCornerShape(9.dp),
-                    )
-                    .clickable { onTextRotation(rot) }
-                    .padding(horizontal = 5.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                FloatIcons.Rotate(tint = if (active) scheme.onPrimary else scheme.onSurfaceVariant)
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        // icon-only paste: fills the caption straight from the clipboard. We explicitly
-        // keep focus where it is, so tapping paste never opens the keyboard.
-        Box(
-            Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .background(scheme.surface)
-                .border(1.dp, scheme.outline.copy(.45f), RoundedCornerShape(9.dp))
-                .semantics { contentDescription = ctx.getString(R.string.action_paste) }
-                .clickable {
-                    val pasted = clipboard.getText()?.text?.replace("\n", " ")?.trim()
-                    if (!pasted.isNullOrBlank()) {
-                        val next = pasted.take(80)
-                        value = next
-                        onText(next)
-                        keyboard?.hide()
-                    }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            FloatIcons.Paste(tint = scheme.primary)
-        }
-    }
+    Spacer(Modifier.height(4.dp))
     SliderRow(
         ctx.getString(R.string.label_size),
         state.text.sizeFraction * 1000f,
         30f..140f,
     ) { onTextSize(it / 1000f) }
+    // rotation is a plain slider now: -180..180 in 15 degree detents
+    SliderRow(
+        ctx.getString(R.string.label_text_rotation),
+        state.text.rotation,
+        -180f..180f,
+        onPreview = onTextRotationPreview,
+        onCommit = onTextRotationCommit,
+        detents = 23,
+    )
 }
 
-/** Square toggle for the text anchor (position of the block inside the frame). */
+/** Compact 3x3 position picker; the same language as the picture-position grid. */
 @Composable
-private fun AnchorChip(
-    label: String,
-    active: Boolean,
-    onAnchor: () -> Unit,
-    icon: @Composable () -> Unit,
-) {
+private fun PositionGrid(selected: TextAnchor, onPick: (TextAnchor) -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    Box(
-        Modifier
-            .size(30.dp)
-            .clip(RoundedCornerShape(9.dp))
-            .background(if (active) scheme.primaryContainer else scheme.surface)
-            .border(
-                if (active) 1.5.dp else 1.dp,
-                if (active) scheme.primary else scheme.outline.copy(.5f),
-                RoundedCornerShape(9.dp),
-            )
-            .semantics { contentDescription = label }
-            .clickable(onClick = onAnchor),
-        contentAlignment = Alignment.Center,
-    ) { icon() }
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        TextAnchor.entries.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                row.forEach { anchor ->
+                    val active = selected == anchor
+                    Box(
+                        Modifier
+                            .size(20.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (active) scheme.primary else scheme.surface)
+                            .border(
+                                1.dp,
+                                if (active) Color.Transparent else scheme.outline.copy(.45f),
+                                RoundedCornerShape(6.dp),
+                            )
+                            .clickable { onPick(anchor) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier
+                                .size(if (active) 5.dp else 4.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (active) scheme.onPrimary else scheme.onSurfaceVariant.copy(.45f),
+                                ),
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

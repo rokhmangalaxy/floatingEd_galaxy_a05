@@ -50,22 +50,22 @@ enum class TextPosition { TOP_CENTER, BOTTOM_CENTER }
 /**
  * Where the caption sits in the frame — an ANCHOR, not typographic alignment:
  * the whole text block is placed relative to the canvas edge / centre.
+ *
+ * This mirrors the 3x3 position grid used for the picture (AlignPreset), so the user can
+ * put the caption in any of the nine slots: top/middle/bottom × left/center/right.
  */
-@Serializable
-enum class TextAnchor { LEFT, CENTER, RIGHT }
+@Serializable(with = TextAnchorSerializer::class)
+enum class TextAnchor(val fx: Float, val fy: Float) {
+    TOP_LEFT(0f, 0f), TOP_CENTER(0.5f, 0f), TOP_RIGHT(1f, 0f),
+    CENTER_LEFT(0f, 0.5f), CENTER(0.5f, 0.5f), CENTER_RIGHT(1f, 0.5f),
+    BOTTOM_LEFT(0f, 1f), BOTTOM_CENTER(0.5f, 1f), BOTTOM_RIGHT(1f, 1f),
+}
 
 /** Typographic alignment of the lines inside the caption block. */
 @Serializable
 enum class TextAlign { LEFT, CENTER, RIGHT }
 
-/** Quarter-turn rotations offered for the caption. */
-@Serializable
-enum class TextRotation(val degrees: Float) {
-    NONE(0f), CW_90(90f), CCW_90(-90f), CW_270(270f), CCW_270(-270f);
 
-    /** same visual angle as 90 but the other way round: reported separately in the UI */
-    fun visualDegrees(): Float = ((degrees % 360f) + 360f) % 360f
-}
 
 @Serializable
 enum class TextStylePreset { WHITE_ON_BLACK, BLACK_ON_WHITE }
@@ -76,12 +76,13 @@ data class TextOverlay(
     val position: TextPosition = TextPosition.BOTTOM_CENTER,
     val style: TextStylePreset = TextStylePreset.WHITE_ON_BLACK,
     val sizeFraction: Float = 0.075f,
-    /** position of the text block relative to the frame (left / center / right) */
-    val anchor: TextAnchor = TextAnchor.CENTER,
+    /** position of the text block relative to the frame (3x3 grid) */
+    val anchor: TextAnchor = TextAnchor.BOTTOM_CENTER,
     /** typographic alignment inside the block (only matters for multi-line) */
     val align: TextAlign = TextAlign.CENTER,
-    /** quarter-turn rotation of the whole caption */
-    val rotation: TextRotation = TextRotation.NONE,
+    /** rotation of the whole caption, in degrees (-180..180), set by a slider */
+    @Serializable(with = CaptionRotationSerializer::class)
+    val rotation: Float = 0f,
 ) {
     val isVisible: Boolean get() = text.isNotBlank()
 }
@@ -113,4 +114,58 @@ data class EditorState(
 ) {
     val hasVisualEdits: Boolean
         get() = paddingDp > 0f || cornerDp > 0f || shadow || text.isVisible
+}
+
+/**
+ * Backwards compatible readers. Older drafts stored `anchor` as LEFT/CENTER/RIGHT and
+ * `rotation` as an enum name ("NONE" / "CW_90" …). Those history rows must keep opening,
+ * so both serializers accept the old spellings and always write the new shape.
+ */
+object TextAnchorSerializer : kotlinx.serialization.KSerializer<TextAnchor> {
+    override val descriptor = kotlinx.serialization.descriptors.PrimitiveSerialDescriptor(
+        "TextAnchor",
+        kotlinx.serialization.descriptors.PrimitiveKind.STRING,
+    )
+
+    override fun serialize(encoder: kotlinx.serialization.Encoding, value: TextAnchor) {
+        encoder.encodeString(value.name)
+    }
+
+    override fun deserialize(decoder: kotlinx.serialization.Decoder): TextAnchor {
+        val raw = decoder.decodeString()
+        return runCatching { TextAnchor.valueOf(raw) }.getOrElse {
+            when (raw) {
+                "LEFT" -> TextAnchor.BOTTOM_LEFT
+                "CENTER" -> TextAnchor.BOTTOM_CENTER
+                "RIGHT" -> TextAnchor.BOTTOM_RIGHT
+                else -> TextAnchor.BOTTOM_CENTER
+            }
+        }
+    }
+}
+
+object CaptionRotationSerializer : kotlinx.serialization.KSerializer<Float> {
+    override val descriptor = kotlinx.serialization.descriptors.PrimitiveSerialDescriptor(
+        "CaptionRotation",
+        kotlinx.serialization.descriptors.PrimitiveKind.FLOAT,
+    )
+
+    override fun serialize(encoder: kotlinx.serialization.Encoding, value: Float) {
+        encoder.encodeFloat(value)
+    }
+
+    override fun deserialize(decoder: kotlinx.serialization.Decoder): Float {
+        val d = decoder as? kotlinx.serialization.json.JsonDecoder
+            ?: return 0f
+        val prim = d.decodeJsonElement() as? kotlinx.serialization.json.JsonPrimitive
+            ?: return 0f
+        prim.content.toFloatOrNull()?.let { return it }
+        return when (prim.content) {
+            "CW_90" -> 90f
+            "CCW_90" -> -90f
+            "CW_270" -> 270f
+            "CCW_270" -> -270f
+            else -> 0f
+        }
+    }
 }

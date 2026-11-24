@@ -102,7 +102,7 @@
     <string name="text_anchor_right">Teks rata kanan layar</string>
     <string name="tool_ai">AI</string>
     <string name="panel_ai_title">Edit dengan AI</string>
-    <string name="panel_ai_hint">Tulis perintah perubahan (contoh: "buat latar jadi pantai saat senja"). Gambar dikirim ke server AI publik tanpa token.</string>
+    <string name="panel_ai_hint">Tulis perintah, 2 baris. contoh: jadikan latar pantai saat senja</string>
     <string name="ai_run">Proses</string>
     <string name="ai_uploading">Mengunggah gambar…</string>
     <string name="ai_generating">AI sedang mengolah…</string>
@@ -115,4 +115,7 @@
     <string name="ai_apply">Pakai</string>
     <string name="ai_send_as">Kirim sebagai</string>
     <string name="ai_lora_none">Tanpa gaya</string>
+    <string name="label_text_position">Posisi teks</string>
+    <string name="label_text_rotation">Rotasi teks</string>
+    <string name="ai_retry">Perbaiki</string>
 </resources>

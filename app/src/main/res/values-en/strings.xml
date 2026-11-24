@@ -102,7 +102,7 @@
     <string name="text_anchor_right">Text right of screen</string>
     <string name="tool_ai">AI</string>
     <string name="panel_ai_title">Edit with AI</string>
-    <string name="panel_ai_hint">Describe the change (e.g. "make the background a beach at sunset"). The picture is uploaded to a public AI server without a token.</string>
+    <string name="panel_ai_hint">Describe the change, two lines. e.g. make the background a beach at dusk</string>
     <string name="ai_run">Run</string>
     <string name="ai_uploading">Uploading picture…</string>
     <string name="ai_generating">AI is working…</string>
@@ -115,4 +115,7 @@
     <string name="ai_apply">Use</string>
     <string name="ai_send_as">Send as</string>
     <string name="ai_lora_none">No style</string>
+    <string name="label_text_position">Text position</string>
+    <string name="label_text_rotation">Text rotation</string>
+    <string name="ai_retry">Improve</string>
 </resources>
