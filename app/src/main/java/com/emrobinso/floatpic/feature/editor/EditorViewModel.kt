@@ -267,17 +267,20 @@ class EditorViewModel : ViewModel() {
 
     /** Caption rotation in degrees; the slider reports continuously, so no history per px. */
     fun previewTextRotation(deg: Float) {
-        _ui.update {
-            it.copy(state = it.state.copy(text = it.text.copy(rotation = deg)), dirty = true)
+        _ui.update { ui ->
+            ui.copy(
+                state = ui.state.copy(text = ui.state.text.copy(rotation = deg)),
+                dirty = true,
+            )
         }
     }
 
     /** Slider released: single undo step. */
     fun commitTextRotation(deg: Float) {
         pushHistory()
-        _ui.update {
-            it.copy(
-                state = it.state.copy(text = it.text.copy(rotation = deg)),
+        _ui.update { ui ->
+            ui.copy(
+                state = ui.state.copy(text = ui.state.text.copy(rotation = deg)),
                 canUndo = true,
                 canRedo = false,
                 dirty = true,

@@ -174,9 +174,12 @@ class EditorActivity : ComponentActivity() {
             // px so it can be clamped against the real window size, and held in saveable
             // state so a rotation/recreation does not snap the card back to the centre.
             var cardOffset by rememberSaveable { mutableStateOf(Offset.Zero) }
-            val density = LocalDensity.current
-            val maxShiftX = with(density) { ((resources.displayMetrics.widthPixels / density) * 0.15f / 2f).toPx() }
-            val maxShiftY = with(density) { ((screenMaxHeight * 0.18f) / 2f).toPx() }
+            val uiDensity = LocalDensity.current
+            val screenW = with(uiDensity) { resources.displayMetrics.widthPixels.toDp() }
+            // how far the card may be pushed: a sixth of the width / height, so it can never
+            // be dragged completely off screen.
+            val maxShiftX = with(uiDensity) { (screenW * 0.16f / 2f).toPx() }
+            val maxShiftY = with(uiDensity) { (screenMaxHeight.dp * 0.16f / 2f).toPx() }
             var history by remember { mutableStateOf<List<com.emrobinso.floatpic.data.HistoryEntry>>(emptyList()) }
             val enter by animateFloatAsState(1f, tween(220), label = "enter")
             val ctx = LocalContext.current

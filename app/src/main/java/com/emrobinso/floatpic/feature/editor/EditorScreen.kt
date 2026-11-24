@@ -816,8 +816,8 @@ private fun OverlayPanel(
                     AlignGrid { fx, fy -> haptics.snap(); onAlign(fx, fy) }
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        SliderRow(ctx.getString(R.string.label_padding), state.paddingDp, 0f..160f, onPadding)
-                        SliderRow(ctx.getString(R.string.label_corner), state.cornerDp, 0f..96f, onCorner)
+                        SliderRow(ctx.getString(R.string.label_padding), state.paddingDp, 0f..160f, onChange = onPadding)
+                        SliderRow(ctx.getString(R.string.label_corner), state.cornerDp, 0f..96f, onChange = onCorner)
                         Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             PillToggle("Shadow", state.shadow, onShadow)
                             PillToggle("Grid", guidesOn, onGuides)
