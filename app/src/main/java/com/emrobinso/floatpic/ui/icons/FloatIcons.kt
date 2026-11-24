@@ -428,4 +428,39 @@ object FloatIcons {
             line(8.5f, 15.5f, 13.5f, 15.5f, s, c, 1.5f)
         }
     }
+
+    /** Four-point sparkle: the "AI" tool. */
+    @Composable
+    fun Sparkle(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(20.dp)) {
+            val s = size.minDimension / VIEW
+            // big diamond
+            val big = Path().apply {
+                moveTo(12f * s, 2.5f * s)
+                lineTo(14.2f * s, 9.8f * s)
+                lineTo(21.5f * s, 12f * s)
+                lineTo(14.2f * s, 14.2f * s)
+                lineTo(12f * s, 21.5f * s)
+                lineTo(9.8f * s, 14.2f * s)
+                lineTo(2.5f * s, 12f * s)
+                lineTo(9.8f * s, 9.8f * s)
+                close()
+            }
+            drawPath(big, c)
+            // small companion sparkle
+            val small = Path().apply {
+                moveTo(18.6f * s, 3.2f * s)
+                lineTo(19.5f * s, 5.6f * s)
+                lineTo(21.9f * s, 6.5f * s)
+                lineTo(19.5f * s, 7.4f * s)
+                lineTo(18.6f * s, 9.8f * s)
+                lineTo(17.7f * s, 7.4f * s)
+                lineTo(15.3f * s, 6.5f * s)
+                lineTo(17.7f * s, 5.6f * s)
+                close()
+            }
+            drawPath(small, c.copy(alpha = 0.65f))
+        }
+    }
 }

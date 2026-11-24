@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -49,6 +50,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -60,6 +62,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.core.image.ImageLoader
+import com.emrobinso.floatpic.data.AiEditClient
 import com.emrobinso.floatpic.data.DraftStore
 import com.emrobinso.floatpic.data.Exporter
 import com.emrobinso.floatpic.data.HistoryEntry
@@ -159,6 +162,8 @@ class EditorActivity : ComponentActivity() {
             val ui by vm.ui.collectAsState()
             val scope = rememberCoroutineScope()
             var showMinimizePrompt by remember { mutableStateOf(false) }
+            // floating card position: drag the handle at the top to move it around
+            var cardOffset by remember { mutableStateOf(Offset.Zero) }
             var history by remember { mutableStateOf<List<com.emrobinso.floatpic.data.HistoryEntry>>(emptyList()) }
             val enter by animateFloatAsState(1f, tween(220), label = "enter")
             val ctx = LocalContext.current
@@ -194,6 +199,8 @@ class EditorActivity : ComponentActivity() {
                                 scaleX = 0.94f + 0.06f * enter
                                 scaleY = 0.94f + 0.06f * enter
                                 alpha = enter
+                                translationX = cardOffset.x
+                                translationY = cardOffset.y
                             }
                             .fillMaxWidth(0.80f)
                             // hug the content instead of a fixed 70% block: the tall empty
@@ -206,6 +213,30 @@ class EditorActivity : ComponentActivity() {
                                 onClick = {},
                             ),
                     ) {
+                        androidx.compose.foundation.layout.Column {
+                        // DRAG HANDLE: a slim grabber on top of the card. Drag it to move the
+                        // whole floating editor. Everything else keeps its own gestures.
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(22.dp)
+                                .pointerInput(Unit) {
+                                    detectDragGestures(
+                                        onDrag = { change, drag ->
+                                            change.consume()
+                                            cardOffset += drag
+                                        },
+                                    )
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(width = 34.dp, height = 4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)),
+                            )
+                        }
                         EditorScreen(
                             state = ui.state,
                             bitmap = vm.source,
@@ -290,7 +321,18 @@ class EditorActivity : ComponentActivity() {
                             onTextPosition = vm::setTextPosition,
                             onTextStyle = vm::setTextStyle,
                             onTextSize = vm::setTextSize,
-                            onTextAlign = vm::setTextAlign,
+                            onTextAnchor = vm::setTextAnchor,
+                            onTextRotation = vm::setTextRotation,
+                            onAiApply = { bmp ->
+                                // last AI result wins: it becomes the working picture, and
+                                // undo takes you straight back to the previous one.
+                                val file = AiEditClient.persist(this@EditorActivity, bmp)
+                                vm.replaceSource(bmp, file)
+                                currentSessionId = null
+                            },
+                            onInfo = { msg ->
+                                Toast.makeText(this@EditorActivity, msg, Toast.LENGTH_SHORT).show()
+                            },
                             onPickImage = {
                                 runCatching {
                                     pickImage.launch(
@@ -299,6 +341,7 @@ class EditorActivity : ComponentActivity() {
                                 }.onFailure { openDocument.launch(arrayOf("image/*")) }
                             },
                         )
+                        }
                     }
 
                     if (showMinimizePrompt) {

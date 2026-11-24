@@ -15,6 +15,7 @@ import com.emrobinso.floatpic.core.model.BackgroundKind
 import com.emrobinso.floatpic.core.model.EditorState
 import com.emrobinso.floatpic.core.model.ScaleMode
 import com.emrobinso.floatpic.core.model.TextAlign
+import com.emrobinso.floatpic.core.model.TextAnchor
 import com.emrobinso.floatpic.core.model.TextOverlay
 import com.emrobinso.floatpic.core.model.TextPosition
 import com.emrobinso.floatpic.core.model.TextStylePreset
@@ -326,17 +327,64 @@ object TextPainter {
             sizePx *= 0.94f
         }
         val layouts = result ?: return
-        val x = when (overlay.align) {
-            TextAlign.LEFT -> margin
-            TextAlign.CENTER -> (w - layouts.width) / 2f
-            TextAlign.RIGHT -> w - layouts.width - margin
+
+        // ANCHOR = where the block sits relative to the frame (not line alignment).
+        val x = when (overlay.anchor) {
+            TextAnchor.LEFT -> margin
+            TextAnchor.CENTER -> (w - layouts.width) / 2f
+            TextAnchor.RIGHT -> w - layouts.width - margin
         }
-        val y = when (overlay.position) {
-            TextPosition.TOP_CENTER -> h * 0.05f
-            TextPosition.BOTTOM_CENTER -> h - layouts.height - h * 0.06f
+        val yTop = h * 0.05f
+        val yBottom = h - layouts.height - h * 0.06f
+        val rot = overlay.rotation.degrees
+
+        if (rot == 0f) {
+            val y = when (overlay.position) {
+                TextPosition.TOP_CENTER -> yTop
+                TextPosition.BOTTOM_CENTER -> yBottom
+            }
+            canvas.save()
+            canvas.translate(x, y)
+            layouts.stroke.draw(canvas)
+            layouts.fill.draw(canvas)
+            canvas.restore()
+            return
         }
+
+        // Rotated caption: rotate around the block centre, then re-anchor so the block still
+        // hugs the requested edge of the frame (otherwise a 90° caption is clipped).
         canvas.save()
-        canvas.translate(x, y)
+        android.graphics.Matrix().also { m ->
+            m.reset()
+            // measure the rotated bounds without touching the canvas
+            val cx = x + layouts.width / 2f
+            val cy = (if (overlay.position == TextPosition.TOP_CENTER) yTop else yBottom) +
+                layouts.height / 2f
+            m.setRotate(rot, cx, cy)
+            val pts = floatArrayOf(
+                x, (if (overlay.position == TextPosition.TOP_CENTER) yTop else yBottom),
+                x + layouts.width, (if (overlay.position == TextPosition.TOP_CENTER) yTop else yBottom),
+                x, (if (overlay.position == TextPosition.TOP_CENTER) yTop else yBottom) + layouts.height,
+                x + layouts.width, (if (overlay.position == TextPosition.TOP_CENTER) yTop else yBottom) + layouts.height,
+            )
+            m.mapPoints(pts)
+            val minX = min(min(pts[0], pts[2]), min(pts[4], pts[6]))
+            val maxX = max(max(pts[0], pts[2]), max(pts[4], pts[6]))
+            val minY = min(min(pts[1], pts[3]), min(pts[5], pts[7]))
+            val maxY = max(max(pts[1], pts[3]), max(pts[5], pts[7]))
+
+            val dx = when (overlay.anchor) {
+                TextAnchor.LEFT -> margin - minX
+                TextAnchor.CENTER -> (w - (minX + maxX)) / 2f
+                TextAnchor.RIGHT -> (w - margin) - maxX
+            }
+            val dy = when (overlay.position) {
+                TextPosition.TOP_CENTER -> yTop - minY
+                TextPosition.BOTTOM_CENTER -> (h - h * 0.06f) - maxY
+            }
+            canvas.translate(dx, dy)
+            canvas.rotate(rot, cx, cy)
+        }
         layouts.stroke.draw(canvas)
         layouts.fill.draw(canvas)
         canvas.restore()

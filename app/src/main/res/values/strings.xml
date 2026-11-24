@@ -97,4 +97,22 @@
     <string name="text_align_left">Rata kiri</string>
     <string name="text_align_center">Rata tengah</string>
     <string name="text_align_right">Rata kanan</string>
+    <string name="text_anchor_left">Teks rata kiri layar</string>
+    <string name="text_anchor_center">Teks di tengah layar</string>
+    <string name="text_anchor_right">Teks rata kanan layar</string>
+    <string name="tool_ai">AI</string>
+    <string name="panel_ai_title">Edit dengan AI</string>
+    <string name="panel_ai_hint">Tulis perintah perubahan (contoh: "buat latar jadi pantai saat senja"). Gambar dikirim ke server AI publik tanpa token.</string>
+    <string name="ai_run">Proses</string>
+    <string name="ai_uploading">Mengunggah gambar…</string>
+    <string name="ai_generating">AI sedang mengolah…</string>
+    <string name="ai_done">Hasil AI diterapkan</string>
+    <string name="ai_failed">AI gagal memproses gambar</string>
+    <string name="ai_failed_detail">AI gagal: %1$s</string>
+    <string name="ai_no_prompt">Tulis dulu perintah perubahannya</string>
+    <string name="ai_need_network">Butuh koneksi internet untuk fitur AI</string>
+    <string name="ai_results">Hasil AI</string>
+    <string name="ai_apply">Pakai</string>
+    <string name="ai_send_as">Kirim sebagai</string>
+    <string name="ai_lora_none">Tanpa gaya</string>
 </resources>

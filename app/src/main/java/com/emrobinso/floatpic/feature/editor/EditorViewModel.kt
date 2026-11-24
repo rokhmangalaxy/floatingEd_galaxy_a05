@@ -246,6 +246,33 @@ class EditorViewModel : ViewModel() {
         it.copy(text = it.text.copy(align = align))
     }
 
+    fun setTextAnchor(anchor: com.emrobinso.floatpic.core.model.TextAnchor) = mutate {
+        it.copy(text = it.text.copy(anchor = anchor))
+    }
+
+    fun setTextRotation(rotation: com.emrobinso.floatpic.core.model.TextRotation) = mutate {
+        it.copy(text = it.text.copy(rotation = rotation))
+    }
+
+    /** Swaps the whole picture for an AI result (keeps undo + history working). */
+    fun replaceSource(bitmap: android.graphics.Bitmap, file: java.io.File?) {
+        pushHistory()
+        source?.recycle()
+        source = bitmap
+        sourceFile = file
+        _ui.update {
+            it.copy(
+                loading = false,
+                error = null,
+                state = EditorState(),
+                canUndo = true,
+                canRedo = false,
+                dirty = true,
+            )
+        }
+        committed = _ui.value.state
+    }
+
     fun setTextStyle(style: TextStylePreset) = mutate {
         it.copy(text = it.text.copy(style = style))
     }

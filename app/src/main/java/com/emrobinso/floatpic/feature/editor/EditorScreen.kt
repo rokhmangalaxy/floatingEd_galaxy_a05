@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -75,6 +76,9 @@ import com.emrobinso.floatpic.core.model.EditorState
 import com.emrobinso.floatpic.core.model.ScaleMode
 import com.emrobinso.floatpic.core.model.TextPosition
 import com.emrobinso.floatpic.core.model.TextAlign
+import com.emrobinso.floatpic.core.model.TextAnchor
+import com.emrobinso.floatpic.core.model.TextRotation
+import com.emrobinso.floatpic.feature.ai.AiPanel
 import com.emrobinso.floatpic.core.model.TextStylePreset
 import com.emrobinso.floatpic.core.model.Transform
 import com.emrobinso.floatpic.ui.Haptics
@@ -82,10 +86,9 @@ import com.emrobinso.floatpic.ui.icons.FloatIcons
 import com.emrobinso.floatpic.ui.theme.AppTheme
 import com.emrobinso.floatpic.ui.theme.LocalExtra
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT, MIRROR, ROTATE, RATIO, HISTORY, RESET }
+enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT, MIRROR, ROTATE, RATIO, AI, HISTORY, RESET }
 
 /** Label shown on the ratio chip. */
 fun AspectPreset.chipLabel(): String = when (this) {
@@ -158,7 +161,10 @@ fun EditorScreen(
     onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
-    onTextAlign: (TextAlign) -> Unit,
+    onTextAnchor: (TextAnchor) -> Unit,
+    onTextRotation: (TextRotation) -> Unit,
+    onAiApply: (Bitmap) -> Unit,
+    onInfo: (String) -> Unit,
     onPickImage: () -> Unit,
     history: List<com.emrobinso.floatpic.data.HistoryEntry>,
     onOpenHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
@@ -276,6 +282,7 @@ fun EditorScreen(
                             OverlayPanel(
                                 tool = tool,
                                 state = state,
+                                bitmap = bitmap,
                                 haptics = haptics,
                                 history = history,
                                 guidesOn = guides,
@@ -298,7 +305,6 @@ fun EditorScreen(
                                 onTextPosition = onTextPosition,
                                 onTextStyle = onTextStyle,
                                 onTextSize = onTextSize,
-                                onTextAlign = onTextAlign,
                                 onDone = { tool = Tool.NONE },
                                 onOpenHistory = onOpenHistory,
                                 onDeleteHistory = onDeleteHistory,
@@ -425,31 +431,53 @@ private fun ToolRow(active: Tool, onTool: (Tool) -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     val ic = { t: Tool -> if (active == t) scheme.onPrimary else scheme.onSurface }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 2.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        toolItem(ctx.getString(R.string.tool_ratio), active == Tool.RATIO,
-            { FloatIcons.Ratio(tint = ic(Tool.RATIO)) }) { onTool(Tool.RATIO) }
-        toolItem(ctx.getString(R.string.tool_crop), active == Tool.CROP,
-            { FloatIcons.Crop(tint = ic(Tool.CROP)) }) { onTool(Tool.CROP) }
-        toolItem(ctx.getString(R.string.tool_frame), active == Tool.FRAME,
-            { FloatIcons.Position(tint = ic(Tool.FRAME)) }) { onTool(Tool.FRAME) }
-        toolItem(ctx.getString(R.string.tool_background), active == Tool.BACKGROUND,
-            { FloatIcons.Background(tint = ic(Tool.BACKGROUND)) }) { onTool(Tool.BACKGROUND) }
-        toolItem(ctx.getString(R.string.tool_text), active == Tool.TEXT,
-            { FloatIcons.TextIcon(tint = ic(Tool.TEXT)) }) { onTool(Tool.TEXT) }
-        toolItem(ctx.getString(R.string.tool_mirror), active == Tool.MIRROR,
-            { FloatIcons.MirrorH(tint = ic(Tool.MIRROR)) }) { onTool(Tool.MIRROR) }
-        toolItem(ctx.getString(R.string.tool_rotate), active == Tool.ROTATE,
-            { FloatIcons.RotateTool(tint = ic(Tool.ROTATE)) }) { onTool(Tool.ROTATE) }
-        toolItem(ctx.getString(R.string.history_short), active == Tool.HISTORY,
-            { FloatIcons.History(tint = ic(Tool.HISTORY)) }) { onTool(Tool.HISTORY) }
-        toolItem(ctx.getString(R.string.action_reset_all), active == Tool.RESET,
-            { FloatIcons.ResetAll(tint = ic(Tool.RESET)) }) { onTool(Tool.RESET) }
+
+    // 9 tools, two balanced rows: keeps every slot >= 32dp without shrinking the labels
+    val top = listOf(Tool.RATIO, Tool.CROP, Tool.FRAME, Tool.BACKGROUND, Tool.TEXT)
+    val bottom = listOf(Tool.MIRROR, Tool.ROTATE, Tool.AI, Tool.HISTORY, Tool.RESET)
+
+    @Composable
+    fun slot(t: Tool) {
+        when (t) {
+            Tool.RATIO -> toolItem(ctx.getString(R.string.tool_ratio), active == t,
+                { FloatIcons.Ratio(tint = ic(t)) }) { onTool(t) }
+            Tool.CROP -> toolItem(ctx.getString(R.string.tool_crop), active == t,
+                { FloatIcons.Crop(tint = ic(t)) }) { onTool(t) }
+            Tool.FRAME -> toolItem(ctx.getString(R.string.tool_frame), active == t,
+                { FloatIcons.Position(tint = ic(t)) }) { onTool(t) }
+            Tool.BACKGROUND -> toolItem(ctx.getString(R.string.tool_background), active == t,
+                { FloatIcons.Background(tint = ic(t)) }) { onTool(t) }
+            Tool.TEXT -> toolItem(ctx.getString(R.string.tool_text), active == t,
+                { FloatIcons.TextIcon(tint = ic(t)) }) { onTool(t) }
+            Tool.MIRROR -> toolItem(ctx.getString(R.string.tool_mirror), active == t,
+                { FloatIcons.MirrorH(tint = ic(t)) }) { onTool(t) }
+            Tool.ROTATE -> toolItem(ctx.getString(R.string.tool_rotate), active == t,
+                { FloatIcons.RotateTool(tint = ic(t)) }) { onTool(t) }
+            Tool.AI -> toolItem(ctx.getString(R.string.tool_ai), active == t,
+                { FloatIcons.Sparkle(tint = ic(t)) }) { onTool(t) }
+            Tool.HISTORY -> toolItem(ctx.getString(R.string.history_short), active == t,
+                { FloatIcons.History(tint = ic(t)) }) { onTool(t) }
+            Tool.RESET -> toolItem(ctx.getString(R.string.action_reset_all), active == t,
+                { FloatIcons.ResetAll(tint = ic(t)) }) { onTool(t) }
+            Tool.NONE -> Unit
+        }
+    }
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) { top.forEach { slot(it) } }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) { bottom.forEach { slot(it) } }
     }
 }
 
@@ -689,6 +717,7 @@ private fun EmptyState(onPick: () -> Unit) {
 private fun OverlayPanel(
     tool: Tool,
     state: EditorState,
+    bitmap: Bitmap?,
     haptics: Haptics,
     history: List<com.emrobinso.floatpic.data.HistoryEntry>,
     guidesOn: Boolean,
@@ -714,7 +743,10 @@ private fun OverlayPanel(
     onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
-    onTextAlign: (TextAlign) -> Unit,
+    onTextAnchor: (TextAnchor) -> Unit,
+    onTextRotation: (TextRotation) -> Unit,
+    onAiApply: (Bitmap) -> Unit,
+    onInfo: (String) -> Unit,
     onDone: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -827,7 +859,8 @@ private fun OverlayPanel(
                 onTextPosition = onTextPosition,
                 onTextStyle = onTextStyle,
                 onTextSize = onTextSize,
-                onTextAlign = onTextAlign,
+                onTextAnchor = onTextAnchor,
+                onTextRotation = onTextRotation,
             )
 
             Tool.MIRROR -> {
@@ -874,6 +907,12 @@ private fun OverlayPanel(
                     PillToggle("Grid", guidesOn, onGuides)
                 }
             }
+
+            Tool.AI -> AiPanel(
+                source = bitmap,
+                onApply = onAiApply,
+                onInfo = onInfo,
+            )
 
             Tool.RATIO -> {
                 SectionTitle(ctx.getString(R.string.panel_ratio_title))
@@ -1213,17 +1252,20 @@ private fun TextPanel(
     onTextPosition: (TextPosition) -> Unit,
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
-    onTextAlign: (TextAlign) -> Unit,
+    onTextAnchor: (TextAnchor) -> Unit,
+    onTextRotation: (TextRotation) -> Unit,
+    onAiApply: (Bitmap) -> Unit,
+    onInfo: (String) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     val focus = remember { FocusRequester() }
     val clipboard = LocalClipboardManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     var value by remember { mutableStateOf(state.text.text) }
-    LaunchedEffect(Unit) {
-        delay(150)
-        runCatching { focus.requestFocus() }
-    }
+    // NOTE: no auto-focus on purpose. Requesting focus when the panel opens popped the
+    // keyboard immediately, which covered the preview. The keyboard now appears only when
+    // the user taps the field; paste fills the field programmatically without focusing.
 
     SectionTitle(ctx.getString(R.string.panel_text_title))
     Spacer(Modifier.height(5.dp))
@@ -1278,23 +1320,62 @@ private fun TextPanel(
     }
     Spacer(Modifier.height(5.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        AlignChip(TextAlign.LEFT, state.text.align == TextAlign.LEFT, onTextAlign) {
-            FloatIcons.AlignLines(tint = if (state.text.align == TextAlign.LEFT) scheme.primary else scheme.onSurfaceVariant)
+        // these place the WHOLE text block against the frame edge / centre
+        AnchorChip(ctx.getString(R.string.text_anchor_left), state.text.anchor == TextAnchor.LEFT,
+            onAnchor = { onTextAnchor(TextAnchor.LEFT) }) {
+            FloatIcons.AlignLines(tint = if (state.text.anchor == TextAnchor.LEFT) scheme.primary else scheme.onSurfaceVariant)
         }
-        AlignChip(TextAlign.CENTER, state.text.align == TextAlign.CENTER, onTextAlign) {
-            FloatIcons.AlignCenter(tint = if (state.text.align == TextAlign.CENTER) scheme.primary else scheme.onSurfaceVariant)
+        AnchorChip(ctx.getString(R.string.text_anchor_center), state.text.anchor == TextAnchor.CENTER,
+            onAnchor = { onTextAnchor(TextAnchor.CENTER) }) {
+            FloatIcons.AlignCenter(tint = if (state.text.anchor == TextAnchor.CENTER) scheme.primary else scheme.onSurfaceVariant)
         }
-        AlignChip(TextAlign.RIGHT, state.text.align == TextAlign.RIGHT, onTextAlign) {
-            FloatIcons.AlignLines(right = true, tint = if (state.text.align == TextAlign.RIGHT) scheme.primary else scheme.onSurfaceVariant)
+        AnchorChip(ctx.getString(R.string.text_anchor_right), state.text.anchor == TextAnchor.RIGHT,
+            onAnchor = { onTextAnchor(TextAnchor.RIGHT) }) {
+            FloatIcons.AlignLines(right = true, tint = if (state.text.anchor == TextAnchor.RIGHT) scheme.primary else scheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(4.dp))
+        // caption rotation: four quarter turns
+        TextRotation.entries.forEach { rot ->
+            val active = state.text.rotation == rot
+            Box(
+                Modifier
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(if (active) scheme.primary else scheme.surface)
+                    .border(
+                        1.dp,
+                        if (active) Color.Transparent else scheme.outline.copy(.45f),
+                        RoundedCornerShape(9.dp),
+                    )
+                    .clickable { onTextRotation(rot) }
+                    .padding(horizontal = 5.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                FloatIcons.Rotate(tint = if (active) scheme.onPrimary else scheme.onSurfaceVariant)
+            }
         }
         Spacer(Modifier.weight(1f))
-        PillToggle(ctx.getString(R.string.action_paste), false) {
-            val pasted = clipboard.getText()?.text?.replace("\n", " ")
-            if (!pasted.isNullOrBlank()) {
-                val next = pasted.take(80)
-                value = next
-                onText(next)
-            }
+        // icon-only paste: fills the caption straight from the clipboard. We explicitly
+        // keep focus where it is, so tapping paste never opens the keyboard.
+        Box(
+            Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(scheme.surface)
+                .border(1.dp, scheme.outline.copy(.45f), RoundedCornerShape(9.dp))
+                .semantics { contentDescription = ctx.getString(R.string.action_paste) }
+                .clickable {
+                    val pasted = clipboard.getText()?.text?.replace("\n", " ")?.trim()
+                    if (!pasted.isNullOrBlank()) {
+                        val next = pasted.take(80)
+                        value = next
+                        onText(next)
+                        keyboard?.hide()
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            FloatIcons.Paste(tint = scheme.primary)
         }
     }
     SliderRow(
@@ -1304,20 +1385,14 @@ private fun TextPanel(
     ) { onTextSize(it / 1000f) }
 }
 
-/** Small square toggle used by the text alignment row. */
+/** Square toggle for the text anchor (position of the block inside the frame). */
 @Composable
-private fun AlignChip(
-    align: TextAlign,
+private fun AnchorChip(
+    label: String,
     active: Boolean,
-    onAlign: (TextAlign) -> Unit,
+    onAnchor: () -> Unit,
     icon: @Composable () -> Unit,
 ) {
-    val ctx = LocalContext.current
-    val label = when (align) {
-        TextAlign.LEFT -> ctx.getString(R.string.text_align_left)
-        TextAlign.CENTER -> ctx.getString(R.string.text_align_center)
-        TextAlign.RIGHT -> ctx.getString(R.string.text_align_right)
-    }
     val scheme = MaterialTheme.colorScheme
     Box(
         Modifier
@@ -1330,7 +1405,7 @@ private fun AlignChip(
                 RoundedCornerShape(9.dp),
             )
             .semantics { contentDescription = label }
-            .clickable { onAlign(align) },
+            .clickable(onClick = onAnchor),
         contentAlignment = Alignment.Center,
     ) { icon() }
 }

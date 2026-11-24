@@ -97,4 +97,22 @@
     <string name="text_align_left">Align left</string>
     <string name="text_align_center">Align center</string>
     <string name="text_align_right">Align right</string>
+    <string name="text_anchor_left">Text left of screen</string>
+    <string name="text_anchor_center">Text centered on screen</string>
+    <string name="text_anchor_right">Text right of screen</string>
+    <string name="tool_ai">AI</string>
+    <string name="panel_ai_title">Edit with AI</string>
+    <string name="panel_ai_hint">Describe the change (e.g. "make the background a beach at sunset"). The picture is uploaded to a public AI server without a token.</string>
+    <string name="ai_run">Run</string>
+    <string name="ai_uploading">Uploading picture…</string>
+    <string name="ai_generating">AI is working…</string>
+    <string name="ai_done">AI result applied</string>
+    <string name="ai_failed">AI could not process the picture</string>
+    <string name="ai_failed_detail">AI failed: %1$s</string>
+    <string name="ai_no_prompt">Describe the change first</string>
+    <string name="ai_need_network">An internet connection is required for AI</string>
+    <string name="ai_results">AI results</string>
+    <string name="ai_apply">Use</string>
+    <string name="ai_send_as">Send as</string>
+    <string name="ai_lora_none">No style</string>
 </resources>

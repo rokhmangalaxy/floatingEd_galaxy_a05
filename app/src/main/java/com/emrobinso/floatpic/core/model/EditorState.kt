@@ -47,9 +47,25 @@ data class BackgroundSpec(
 @Serializable
 enum class TextPosition { TOP_CENTER, BOTTOM_CENTER }
 
-/** Horizontal alignment of the caption inside its line box. */
+/**
+ * Where the caption sits in the frame — an ANCHOR, not typographic alignment:
+ * the whole text block is placed relative to the canvas edge / centre.
+ */
+@Serializable
+enum class TextAnchor { LEFT, CENTER, RIGHT }
+
+/** Typographic alignment of the lines inside the caption block. */
 @Serializable
 enum class TextAlign { LEFT, CENTER, RIGHT }
+
+/** Quarter-turn rotations offered for the caption. */
+@Serializable
+enum class TextRotation(val degrees: Float) {
+    NONE(0f), CW_90(90f), CCW_90(-90f), CW_270(270f), CCW_270(-270f);
+
+    /** same visual angle as 90 but the other way round: reported separately in the UI */
+    fun visualDegrees(): Float = ((degrees % 360f) + 360f) % 360f
+}
 
 @Serializable
 enum class TextStylePreset { WHITE_ON_BLACK, BLACK_ON_WHITE }
@@ -60,8 +76,12 @@ data class TextOverlay(
     val position: TextPosition = TextPosition.BOTTOM_CENTER,
     val style: TextStylePreset = TextStylePreset.WHITE_ON_BLACK,
     val sizeFraction: Float = 0.075f,
-    /** left / center / right inside the frame; defaults to centered */
+    /** position of the text block relative to the frame (left / center / right) */
+    val anchor: TextAnchor = TextAnchor.CENTER,
+    /** typographic alignment inside the block (only matters for multi-line) */
     val align: TextAlign = TextAlign.CENTER,
+    /** quarter-turn rotation of the whole caption */
+    val rotation: TextRotation = TextRotation.NONE,
 ) {
     val isVisible: Boolean get() = text.isNotBlank()
 }
