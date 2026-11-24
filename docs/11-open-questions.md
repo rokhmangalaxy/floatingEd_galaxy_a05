@@ -127,6 +127,19 @@ Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bu
       hasil terbaru langsung menimpa gambar kerja, dan kegagalan ditampilkan sebagai pesan.
 - [x] Icon row jadi dua baris (9 tool: +AI).
 
+## v0.2.5 — putaran 8 lanjutan
+
+- [x] **AI**: timer detik saat proses berjalan, tombol **Batal**, panel **reset total** setiap
+      kali dibuka lagi (input, tombol, spinner), prompt **2 baris**, riwayat **10 prompt**
+      bisa di-tap untuk dipakai ulang. Hasil terbaru menimpa gambar, hasil lama tetap bisa dipilih.
+- [x] **Handle geser** sekarang strip lebar 28dp dengan 3 titik + tulisan "geser untuk pindah",
+      punya gestur sendiri (tidak pernah tertelan gesture preview), posisi di-clamp supaya
+      kartu tidak bisa hilang di luar layar.
+- [x] **Teks**: posisi 3×3 grid titik (sama seperti menu posisi gambar) + slider rotasi
+      −180°…180°; tombol tempel jadi pil ikon berlabel yang selalu terlihat; field 2 baris.
+- [x] **Dock**: satu baris ikon yang bisa di-scroll horizontal (bukan 2 baris).
+- [x] **History**: preview default / "reset ke asli" tidak pernah masuk history.
+
 ## Berikutnya (v0.3)
 
 1. Preset kontekstual (screenshot/portrait/meme) + preset simpan sendiri.
