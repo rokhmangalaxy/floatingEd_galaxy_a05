@@ -107,6 +107,7 @@ class EditorActivity : ComponentActivity() {
 
     /** set from setContent so suspend code can publish a new history list */
     private var onHistoryChanged: (List<com.emrobinso.floatpic.data.HistoryEntry>) -> Unit = {}
+    private var onHistoryIndexReset: () -> Unit = {}
 
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -224,6 +225,13 @@ class EditorActivity : ComponentActivity() {
                 history = list
                 historyIndex = 0
             }
+            onHistoryIndexReset = { historyIndex = -1 }
+            suspend fun refreshHistory() {
+                history = HistoryStore.list(ctx)
+                val id = currentSessionId
+                historyIndex = if (id == null) -1 else history.indexOfFirst { it.id == id }
+            }
+
             // A newly opened picture (shared from another app, picked, or the AI base) writes
             // its own history row straight away, so nothing the user touched ever goes missing.
             LaunchedEffect(ui.loading, vm.source) {
@@ -232,11 +240,6 @@ class EditorActivity : ComponentActivity() {
                 delay(400)
                 val entry = autosave(force = true)
                 if (entry != null) refreshHistory()
-            }
-            suspend fun refreshHistory() {
-                history = HistoryStore.list(ctx)
-                val id = currentSessionId
-                historyIndex = if (id == null) -1 else history.indexOfFirst { it.id == id }
             }
             LaunchedEffect(ui.savedTick) { refreshHistory() }
             LaunchedEffect(Unit) { refreshHistory() }
@@ -551,8 +554,8 @@ class EditorActivity : ComponentActivity() {
     private fun openUri(uri: Uri) {
         // a new picture starts its own history row (autosave then updates that row in place)
         currentSessionId = null
-        historyIndex = -1
         vm.loadImage { ImageLoader.load(this, uri) }
+        onHistoryIndexReset()
     }
 
     private fun restoreSession(sessionId: String) {
