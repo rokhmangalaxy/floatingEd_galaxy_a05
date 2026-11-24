@@ -102,7 +102,7 @@
     <string name="text_anchor_right">Text right of screen</string>
     <string name="tool_ai">AI</string>
     <string name="panel_ai_title">Edit with AI</string>
-    <string name="panel_ai_hint">Describe the change, two lines. e.g. make the background a beach at dusk</string>
+    <string name="panel_ai_hint">Describe the change, e.g. make the background a beach at dusk (no character limit)</string>
     <string name="ai_run">Run</string>
     <string name="ai_uploading">Uploading picture…</string>
     <string name="ai_generating">AI is working…</string>

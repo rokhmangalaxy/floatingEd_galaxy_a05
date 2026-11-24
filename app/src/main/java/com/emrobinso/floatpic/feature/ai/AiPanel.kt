@@ -296,7 +296,8 @@ fun AiPanel(
             Box(
                 Modifier
                     .weight(1f)
-                    .height(48.dp)
+                    // grows with the text (2 lines minimum, ~8 lines before it scrolls)
+                    .heightIn(min = 48.dp, max = 132.dp)
                     .clip(RoundedCornerShape(11.dp))
                     .background(scheme.surface)
                     .border(1.dp, scheme.outline.copy(.5f), RoundedCornerShape(11.dp))
@@ -313,9 +314,9 @@ fun AiPanel(
                 }
                 BasicTextField(
                     value = session.prompt,
-                    onValueChange = { if (it.length <= 150) session.prompt = it },
+                    // no character limit: the prompt is free text
+                    onValueChange = { session.prompt = it },
                     singleLine = false,
-                    maxLines = 2,
                     textStyle = TextStyle(fontSize = 12.sp, color = scheme.onSurface, lineHeight = 15.sp),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -329,9 +330,8 @@ fun AiPanel(
                     .border(1.dp, scheme.primary.copy(alpha = .5f), RoundedCornerShape(11.dp))
                     .semantics { contentDescription = ctx.getString(R.string.action_paste) }
                     .clickable {
-                        val pasted = clipboard.getText()?.text
-                            ?.replace("\n", " ")?.trim()
-                        if (!pasted.isNullOrBlank()) session.prompt = pasted.take(150)
+                        val pasted = clipboard.getText()?.text?.trim()
+                        if (!pasted.isNullOrBlank()) session.prompt = pasted
                     },
                 contentAlignment = Alignment.Center,
             ) {
