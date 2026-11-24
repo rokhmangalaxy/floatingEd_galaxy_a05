@@ -305,6 +305,10 @@ fun EditorScreen(
                                 onTextPosition = onTextPosition,
                                 onTextStyle = onTextStyle,
                                 onTextSize = onTextSize,
+                                onTextAnchor = onTextAnchor,
+                                onTextRotation = onTextRotation,
+                                onAiApply = onAiApply,
+                                onInfo = onInfo,
                                 onDone = { tool = Tool.NONE },
                                 onOpenHistory = onOpenHistory,
                                 onDeleteHistory = onDeleteHistory,
@@ -427,42 +431,51 @@ private fun RatioChips(
 }
 
 @Composable
-private fun ToolRow(active: Tool, onTool: (Tool) -> Unit) {
-    val scheme = MaterialTheme.colorScheme
+private fun RowScope.ToolSlot(
+    t: Tool,
+    active: Tool,
+    onTool: (Tool) -> Unit,
+) {
     val ctx = LocalContext.current
-    val ic = { t: Tool -> if (active == t) scheme.onPrimary else scheme.onSurface }
+    val scheme = MaterialTheme.colorScheme
+    val tint = if (active == t) scheme.onPrimary else scheme.onSurface
 
-    // 9 tools, two balanced rows: keeps every slot >= 32dp without shrinking the labels
-    val top = listOf(Tool.RATIO, Tool.CROP, Tool.FRAME, Tool.BACKGROUND, Tool.TEXT)
-    val bottom = listOf(Tool.MIRROR, Tool.ROTATE, Tool.AI, Tool.HISTORY, Tool.RESET)
+    val label = when (t) {
+        Tool.RATIO -> ctx.getString(R.string.tool_ratio)
+        Tool.CROP -> ctx.getString(R.string.tool_crop)
+        Tool.FRAME -> ctx.getString(R.string.tool_frame)
+        Tool.BACKGROUND -> ctx.getString(R.string.tool_background)
+        Tool.TEXT -> ctx.getString(R.string.tool_text)
+        Tool.MIRROR -> ctx.getString(R.string.tool_mirror)
+        Tool.ROTATE -> ctx.getString(R.string.tool_rotate)
+        Tool.AI -> ctx.getString(R.string.tool_ai)
+        Tool.HISTORY -> ctx.getString(R.string.history_short)
+        Tool.RESET -> ctx.getString(R.string.action_reset_all)
+        Tool.NONE -> ""
+    }
+    if (t == Tool.NONE) return
 
-    @Composable
-    fun slot(t: Tool) {
+    toolItem(label, active == t, {
         when (t) {
-            Tool.RATIO -> toolItem(ctx.getString(R.string.tool_ratio), active == t,
-                { FloatIcons.Ratio(tint = ic(t)) }) { onTool(t) }
-            Tool.CROP -> toolItem(ctx.getString(R.string.tool_crop), active == t,
-                { FloatIcons.Crop(tint = ic(t)) }) { onTool(t) }
-            Tool.FRAME -> toolItem(ctx.getString(R.string.tool_frame), active == t,
-                { FloatIcons.Position(tint = ic(t)) }) { onTool(t) }
-            Tool.BACKGROUND -> toolItem(ctx.getString(R.string.tool_background), active == t,
-                { FloatIcons.Background(tint = ic(t)) }) { onTool(t) }
-            Tool.TEXT -> toolItem(ctx.getString(R.string.tool_text), active == t,
-                { FloatIcons.TextIcon(tint = ic(t)) }) { onTool(t) }
-            Tool.MIRROR -> toolItem(ctx.getString(R.string.tool_mirror), active == t,
-                { FloatIcons.MirrorH(tint = ic(t)) }) { onTool(t) }
-            Tool.ROTATE -> toolItem(ctx.getString(R.string.tool_rotate), active == t,
-                { FloatIcons.RotateTool(tint = ic(t)) }) { onTool(t) }
-            Tool.AI -> toolItem(ctx.getString(R.string.tool_ai), active == t,
-                { FloatIcons.Sparkle(tint = ic(t)) }) { onTool(t) }
-            Tool.HISTORY -> toolItem(ctx.getString(R.string.history_short), active == t,
-                { FloatIcons.History(tint = ic(t)) }) { onTool(t) }
-            Tool.RESET -> toolItem(ctx.getString(R.string.action_reset_all), active == t,
-                { FloatIcons.ResetAll(tint = ic(t)) }) { onTool(t) }
+            Tool.RATIO -> FloatIcons.Ratio(tint = tint)
+            Tool.CROP -> FloatIcons.Crop(tint = tint)
+            Tool.FRAME -> FloatIcons.Position(tint = tint)
+            Tool.BACKGROUND -> FloatIcons.Background(tint = tint)
+            Tool.TEXT -> FloatIcons.TextIcon(tint = tint)
+            Tool.MIRROR -> FloatIcons.MirrorH(tint = tint)
+            Tool.ROTATE -> FloatIcons.RotateTool(tint = tint)
+            Tool.AI -> FloatIcons.Sparkle(tint = tint)
+            Tool.HISTORY -> FloatIcons.History(tint = tint)
+            Tool.RESET -> FloatIcons.ResetAll(tint = tint)
             Tool.NONE -> Unit
         }
-    }
+    }) { onTool(t) }
+}
 
+@Composable
+private fun ToolRow(active: Tool, onTool: (Tool) -> Unit) {
+    // 9 tools, two balanced rows: every slot is a plain RowScope item, so nothing depends
+    // on a nested composable scope (toolItem is a RowScope extension).
     Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier
@@ -470,14 +483,26 @@ private fun ToolRow(active: Tool, onTool: (Tool) -> Unit) {
                 .padding(horizontal = 2.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
-        ) { top.forEach { slot(it) } }
+        ) {
+            ToolSlot(Tool.RATIO, active, onTool)
+            ToolSlot(Tool.CROP, active, onTool)
+            ToolSlot(Tool.FRAME, active, onTool)
+            ToolSlot(Tool.BACKGROUND, active, onTool)
+            ToolSlot(Tool.TEXT, active, onTool)
+        }
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 2.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
-        ) { bottom.forEach { slot(it) } }
+        ) {
+            ToolSlot(Tool.MIRROR, active, onTool)
+            ToolSlot(Tool.ROTATE, active, onTool)
+            ToolSlot(Tool.AI, active, onTool)
+            ToolSlot(Tool.HISTORY, active, onTool)
+            ToolSlot(Tool.RESET, active, onTool)
+        }
     }
 }
 

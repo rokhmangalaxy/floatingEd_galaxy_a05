@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -170,7 +171,7 @@ object AiEditClient {
         }
     }
 
-    private fun poll(url: String): JsonObject? {
+    private suspend fun poll(url: String): JsonObject? {
         val deadline = System.currentTimeMillis() + 6 * 60 * 1000
         while (System.currentTimeMillis() < deadline) {
             val conn = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -200,7 +201,7 @@ object AiEditClient {
             }
             val done = last
             if (done != null && (done["image"] != null || done["status"] != null)) return done
-            kotlinx.coroutines.delay(3_000)
+            delay(3_000)
         }
         return null
     }
