@@ -118,4 +118,7 @@
     <string name="label_text_position">Posisi teks</string>
     <string name="label_text_rotation">Rotasi teks</string>
     <string name="ai_retry">Perbaiki</string>
+    <string name="ai_cancel">Batal</string>
+    <string name="ai_cancelled">Permintaan AI dibatalkan</string>
+    <string name="drag_hint">geser untuk pindah</string>
 </resources>

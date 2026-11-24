@@ -81,6 +81,7 @@ fun AiPanel(
     var stage by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var elapsed by remember { mutableStateOf(0) }
+    var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     // ---- prompt history (10, newest first, transparently persisted) -------------------
     var promptHistory by remember { mutableStateOf(AiPromptStore.load(ctx)) }
@@ -115,7 +116,7 @@ fun AiPanel(
         rememberPrompt(prompt)
         stage = ctx.getString(R.string.ai_uploading)
         val sentPrompt = prompt
-        scope.launch {
+        job = scope.launch {
             val res = AiEditClient.edit(
                 source = bmp,
                 prompt = sentPrompt,
@@ -127,6 +128,7 @@ fun AiPanel(
                 },
             )
             busy = false
+            job = null
             when (res) {
                 is AiEditClient.Result.Ok -> {
                     results.add(0, AiCandidate(res.bitmap, sentPrompt, lora))
@@ -229,6 +231,23 @@ fun AiPanel(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = scheme.onSurfaceVariant,
+                )
+                // escape hatch: a sleeping Space used to leave the panel loading forever
+                Text(
+                    ctx.getString(R.string.ai_cancel),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = scheme.error,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(scheme.error.copy(alpha = .12f))
+                        .clickable {
+                            job?.cancel()
+                            job = null
+                            busy = false
+                            onInfo(ctx.getString(R.string.ai_cancelled))
+                        }
+                        .padding(horizontal = 9.dp, vertical = 5.dp),
                 )
             } else if (results.isNotEmpty()) {
                 RunChip(

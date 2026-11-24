@@ -118,4 +118,7 @@
     <string name="label_text_position">Text position</string>
     <string name="label_text_rotation">Text rotation</string>
     <string name="ai_retry">Improve</string>
+    <string name="ai_cancel">Cancel</string>
+    <string name="ai_cancelled">AI request cancelled</string>
+    <string name="drag_hint">drag to move</string>
 </resources>

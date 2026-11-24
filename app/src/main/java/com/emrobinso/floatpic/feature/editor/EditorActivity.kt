@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -236,7 +237,9 @@ class EditorActivity : ComponentActivity() {
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .height(26.dp)
+                                .height(28.dp)
+                                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                                 .pointerInput(Unit) {
                                     detectDragGestures(
                                         onDragStart = { haptics.tick() },
@@ -251,12 +254,25 @@ class EditorActivity : ComponentActivity() {
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Box(
-                                Modifier
-                                    .size(width = 44.dp, height = 5.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)),
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                repeat(3) {
+                                    Box(
+                                        Modifier
+                                            .size(4.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)),
+                                    )
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    LocalContext.current.getString(R.string.drag_hint),
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                         EditorScreen(
                             state = ui.state,
