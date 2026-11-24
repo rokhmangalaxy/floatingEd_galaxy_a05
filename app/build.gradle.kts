@@ -69,6 +69,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // version name/code are stamped into the crash report
+        buildConfig = true
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"

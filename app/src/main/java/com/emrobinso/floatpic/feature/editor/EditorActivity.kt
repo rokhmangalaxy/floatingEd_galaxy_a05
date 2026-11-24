@@ -47,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -162,19 +163,42 @@ class EditorActivity : ComponentActivity() {
             vm.setTheme(savedTheme)
         }
 
-        handleIntent(intent)
+        // Any failure while preparing the first picture is shown, never fatal: a missing
+        // or undecodable sample used to kill the activity before the first frame.
+        try {
+            handleIntent(intent)
+        } catch (t: Throwable) {
+            com.emrobinso.floatpic.data.CrashLog.write(this, t)
+            Toast.makeText(this, R.string.open_failed, Toast.LENGTH_LONG).show()
+        }
 
         val screenMaxHeight = resources.displayMetrics.heightPixels /
             resources.displayMetrics.density
 
-        setContent {
-            val ui by vm.ui.collectAsState()
+        // tell the user (and us) what killed the previous run, then clear it
+        com.emrobinso.floatpic.data.CrashLog.take(this)?.let { raw ->
+            android.util.Log.e("FloatPicCrash", raw)
+            runCatching {
+                Toast.makeText(
+                    this,
+                    "crash sebelumnya: " + com.emrobinso.floatpic.data.CrashLog.summary(raw),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+
+        runCatching {
+            setContent {
+                val ui by vm.ui.collectAsState()
             val scope = rememberCoroutineScope()
             var showMinimizePrompt by remember { mutableStateOf(false) }
-            // floating card position: dragging the grabber moves the whole card. Stored in
-            // px so it can be clamped against the real window size, and held in saveable
-            // state so a rotation/recreation does not snap the card back to the centre.
-            var cardOffset by rememberSaveable { mutableStateOf(Offset.Zero) }
+            // floating card position: dragging the grabber moves the whole card.
+            // IMPORTANT: kept as two plain Floats. androidx.compose.ui.geometry.Offset is
+            // NOT Bundle-saveable, and putting it in rememberSaveable made the activity
+            // throw while composing the very first frame ("aplikasi memiliki bug" on open).
+            var cardX by rememberSaveable { mutableFloatStateOf(0f) }
+            var cardY by rememberSaveable { mutableFloatStateOf(0f) }
+            val cardOffset = Offset(cardX, cardY)
             val uiDensity = LocalDensity.current
             val screenW = with(uiDensity) { resources.displayMetrics.widthPixels.toDp() }
             // how far the card may be pushed: a sixth of the width / height, so it can never
@@ -245,10 +269,8 @@ class EditorActivity : ComponentActivity() {
                                         onDragStart = { haptics.tick() },
                                         onDrag = { change, drag ->
                                             change.consume()
-                                            cardOffset = Offset(
-                                                (cardOffset.x + drag.x).coerceIn(-maxShiftX, maxShiftX),
-                                                (cardOffset.y + drag.y).coerceIn(-maxShiftY, maxShiftY),
-                                            )
+                                            cardX = (cardX + drag.x).coerceIn(-maxShiftX, maxShiftX)
+                                            cardY = (cardY + drag.y).coerceIn(-maxShiftY, maxShiftY)
                                         },
                                     )
                                 },
@@ -396,12 +418,23 @@ class EditorActivity : ComponentActivity() {
                     }
                 }
 
-                LaunchedEffect(ui.savedTick) {
-                    if (ui.savedTick > 0) {
-                        Toast.makeText(this@EditorActivity, R.string.saved_toast, Toast.LENGTH_SHORT).show()
+                    LaunchedEffect(ui.savedTick) {
+                        if (ui.savedTick > 0) {
+                            Toast.makeText(this@EditorActivity, R.string.saved_toast, Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
+        }.onFailure { t ->
+            // last resort: show the reason instead of a blank translucent window
+            com.emrobinso.floatpic.data.CrashLog.write(this, t)
+            android.util.Log.e("FloatPicCrash", "setContent failed", t)
+            Toast.makeText(
+                this,
+                "UI gagal dimuat: " + (t.message ?: t::class.java.simpleName),
+                Toast.LENGTH_LONG,
+            ).show()
+            finish()
         }
     }
 
@@ -420,7 +453,14 @@ class EditorActivity : ComponentActivity() {
             finishAndRemoveTask()
             return
         }
-        handleIntent(intent)
+        // Any failure while preparing the first picture is shown, never fatal: a missing
+        // or undecodable sample used to kill the activity before the first frame.
+        try {
+            handleIntent(intent)
+        } catch (t: Throwable) {
+            com.emrobinso.floatpic.data.CrashLog.write(this, t)
+            Toast.makeText(this, R.string.open_failed, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun handleIntent(intent: Intent?) {
@@ -446,9 +486,19 @@ class EditorActivity : ComponentActivity() {
         } else if (action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE) {
             Toast.makeText(this, R.string.no_image, Toast.LENGTH_SHORT).show()
         } else {
-            // cold start from the launcher: bundled sample keeps the editor explorable
+            // cold start from the launcher: the bundled sample keeps the editor explorable.
+            // If the asset is missing or undecodable we fall back to a generated placeholder
+            // rather than leaving the user with an empty editor and no explanation.
             vm.loadImage {
-                val bmp = android.graphics.BitmapFactory.decodeStream(assets.open("sample_photo.jpg"))
+                val bmp = runCatching {
+                    assets.open("sample_photo.jpg").use {
+                        android.graphics.BitmapFactory.decodeStream(it)
+                    }
+                }.getOrNull() ?: runCatching {
+                    android.graphics.Bitmap.createBitmap(1080, 1080, android.graphics.Bitmap.Config.ARGB_8888)
+                        .apply { eraseColor(0xFF2A0B12.toInt()) }
+                }.getOrNull()
+                if (bmp == null) error("gambar awal tidak bisa dibuka")
                 com.emrobinso.floatpic.core.image.LoadedImage(bmp, 0, null)
             }
         }
