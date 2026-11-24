@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emrobinso.floatpic.R
+import com.emrobinso.floatpic.data.AiBackend
 import com.emrobinso.floatpic.data.AiEditClient
 import com.emrobinso.floatpic.data.AiPromptStore
 import kotlinx.coroutines.CoroutineScope
@@ -73,6 +74,8 @@ class AiSessionState(
 ) {
     var prompt by mutableStateOf("")
     var lora by mutableStateOf<String?>(null)
+    var backend by mutableStateOf(AiBackend.of(AiPromptStore.backend(context)))
+        private set
     var busy by mutableStateOf(false)
         private set
     var stage by mutableStateOf("")
@@ -122,6 +125,15 @@ class AiSessionState(
         prompts = AiPromptStore.push(context, text)
     }
 
+    /** Switching server invalidates the LoRA choice: ids differ per Space. */
+    fun setBackend(next: AiBackend) {
+        if (next == backend) return
+        backend = next
+        lora = null
+        AiPromptStore.setBackend(context, next.name)
+        note("server diganti ke ${next.label}")
+    }
+
     /**
      * Starts a request. [onApply] is remembered so a result that arrives while the user is in
      * another tool is still applied instead of being dropped.
@@ -152,12 +164,13 @@ class AiSessionState(
         val sentPrompt = prompt
         pushPrompt(sentPrompt)
         note("app ${android.os.Build.VERSION.RELEASE} / ${android.os.Build.MODEL}")
-        note("mulai: prompt=\"${sentPrompt.take(80)}\" lora=${lora ?: AiEditClient.DEFAULT_LORA}")
+        note("mulai: prompt=\"${sentPrompt.take(80)}\" lora=${lora ?: backend.noStyle ?: "-"}")
         note("sumber ${bmp.width}x${bmp.height}")
 
         // running on the ACTIVITY scope: leaving the AI menu must not cancel the request
         job = scope.launch {
             val res = AiEditClient.edit(
+                backend = backend,
                 source = bmp,
                 prompt = sentPrompt,
                 lora = lora,
@@ -234,6 +247,29 @@ fun AiPanel(
         }
         Spacer(Modifier.height(5.dp))
 
+        // which server: both run Qwen-Image-Edit-2511, but one may be asleep / queued
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                ctx.getString(R.string.ai_server),
+                fontSize = 9.sp,
+                color = scheme.onSurfaceVariant,
+            )
+            AiBackend.entries.forEach { b ->
+                ServerChip(
+                    label = b.label,
+                    active = session.backend == b,
+                    onClick = { session.setBackend(b) },
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+
         // prompt box: TWO lines, no auto-focus (opening the panel must not pop the keyboard)
         Box(
             Modifier
@@ -285,7 +321,7 @@ fun AiPanel(
             LoraChip(ctx.getString(R.string.ai_lora_none), session.lora == null) {
                 session.lora = null
             }
-            AiEditClient.LORAS.forEach { id ->
+            session.backend.loras.forEach { id ->
                 LoraChip(label = id, active = session.lora == id) { session.lora = id }
             }
         }
@@ -443,6 +479,24 @@ fun AiPanel(
             color = scheme.onSurfaceVariant,
         )
     }
+}
+
+/** Server switch. A compact pill so both options always fit on one line. */
+@Composable
+private fun ServerChip(label: String, active: Boolean, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Text(
+        text = label,
+        fontSize = 9.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        color = if (active) scheme.onPrimary else scheme.onSurfaceVariant,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (active) scheme.primary else scheme.surfaceVariant.copy(.6f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 4.dp),
+    )
 }
 
 /** One saved prompt. Tap = put it back into the box. */

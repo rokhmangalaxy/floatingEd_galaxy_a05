@@ -127,4 +127,5 @@
     <string name="ai_log_title">Log permintaan</string>
     <string name="ai_log_copied">Log disalin ke clipboard</string>
     <string name="panel_ai_hint_short">Hasil terbaru langsung menggantikan gambar; hasil lama bisa di-tap.</string>
+    <string name="ai_server">Server</string>
 </resources>

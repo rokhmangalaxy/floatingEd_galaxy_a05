@@ -16,6 +16,7 @@ object AiPromptStore {
     const val MAX = 10
     private const val PREFS = "floatpic_ai"
     private const val KEY = "prompts"
+    private const val KEY_BACKEND = "backend"
 
     private val json = Json { ignoreUnknownKeys = true }
     private val listSerializer = ListSerializer(String.serializer())
@@ -25,6 +26,16 @@ object AiPromptStore {
             ?: return emptyList()
         json.decodeFromString(listSerializer, raw).filter { it.isNotBlank() }
     }.getOrDefault(emptyList())
+
+    /** Which AI server was picked last (its name, see [AiBackend]). */
+    fun backend(context: Context): String? = runCatching {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_BACKEND, null)
+    }.getOrNull()
+
+    fun setBackend(context: Context, name: String) = runCatching {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_BACKEND, name).apply()
+    }.let { }
 
     /** Adds [text] at the front, drops duplicates and keeps the list at [MAX]. */
     fun push(context: Context, text: String): List<String> {
