@@ -29,7 +29,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,8 +75,8 @@ fun AiPanel(
     val results = remember { mutableStateListOf<AiCandidate>() }
 
     // saveable-only where it must survive a rotation, plain state where it must reset
-    var prompt by rememberSaveable { mutableStateOf("") }
-    var lora by rememberSaveable { mutableStateOf<String?>(null) }
+    var prompt by remember { mutableStateOf("") }
+    var lora by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var stage by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }

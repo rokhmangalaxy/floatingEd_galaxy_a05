@@ -41,8 +41,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -174,8 +172,6 @@ fun EditorScreen(
 ) {
     var tool by remember { mutableStateOf(Tool.NONE) }
     var guides by remember { mutableStateOf(false) }
-    // bumped on every AI open; used as the panel's `key` so reopening starts from scratch
-    var aiSession by remember { mutableIntStateOf(0) }
     val extra = LocalExtra.current
     val scheme = MaterialTheme.colorScheme
     val radius = extra.cardRadius.dp
@@ -324,12 +320,7 @@ fun EditorScreen(
             // ---- icon row (always visible, never shifts) ---------------------------
             ToolRow(
                 active = tool,
-                onTool = {
-                    haptics.tick()
-                    val next = if (tool == it) Tool.NONE else it
-                    if (next == Tool.AI) aiSession++
-                    tool = next
-                },
+                onTool = { haptics.tick(); tool = if (tool == it) Tool.NONE else it },
             )
 
             ActionBar(onSave = onSave, onShare = onShare)
@@ -934,13 +925,11 @@ private fun OverlayPanel(
                 }
             }
 
-            Tool.AI -> key(aiSession) {
-                AiPanel(
-                    source = bitmap,
-                    onApply = onAiApply,
-                    onInfo = onInfo,
-                )
-            }
+            Tool.AI -> AiPanel(
+                source = bitmap,
+                onApply = onAiApply,
+                onInfo = onInfo,
+            )
 
             Tool.RATIO -> {
                 SectionTitle(ctx.getString(R.string.panel_ratio_title))
