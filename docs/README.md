@@ -21,6 +21,8 @@ Dokumen dipecah per topik. Keputusan yang sudah diambil ada di `11-open-question
 | 13 | [Bubble & Close](13-bubble-minimize.md) | Overlay bubble, izin, snap tepi, hold 1.6 s + haptic close |
 | 14 | [Tema](14-tema.md) | Neumorphism & Pastel Maroon, token, risiko, toggle |
 | 15 | [Preview Visual](15-preview-visual.md) | Spesifikasi tampilan + mockup di `mockups/` |
+| 16 | [Build APK](16-build-apk.md) | Workflow GitHub Actions, signing, update install-timpa |
+| 17 | [Edit AI](17-ai-image-edit.md) | Analisis Qwen-Image-Edit-2511 (HF Space): kapabilitas, risiko, roadmap |
 
 ## Mockup
 

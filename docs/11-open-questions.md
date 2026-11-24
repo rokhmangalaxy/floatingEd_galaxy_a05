@@ -108,6 +108,13 @@ Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bu
       `BubbleService` juga tidak lagi mati kalau notifikasi foreground ditolak atau izin
       overlay dicabut — sekarang muncul pesan, bukan diam saja.
 
+## v0.2.3 — teks & tata letak
+
+- [x] Kartu **hug content** (bukan tinggi tetap 70%) → pita kosong di atas preview hilang.
+- [x] Teks dapat **rata kiri / tengah / kanan** (default tengah), dihormati renderer
+      sehingga preview = hasil ekspor; draft lama tetap terbaca karena ada default.
+- [x] Tombol **Tempel** di panel teks (ambil dari clipboard).
+
 ## Berikutnya (v0.3)
 
 1. Preset kontekstual (screenshot/portrait/meme) + preset simpan sendiri.
