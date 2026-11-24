@@ -1,6 +1,13 @@
 package com.emrobinso.floatpic.core.model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonPrimitive
 
 @Serializable
 enum class AspectPreset(val ratio: Float?, val outputWidth: Int, val outputHeight: Int) {
@@ -121,17 +128,14 @@ data class EditorState(
  * `rotation` as an enum name ("NONE" / "CW_90" …). Those history rows must keep opening,
  * so both serializers accept the old spellings and always write the new shape.
  */
-object TextAnchorSerializer : kotlinx.serialization.KSerializer<TextAnchor> {
-    override val descriptor = kotlinx.serialization.descriptors.PrimitiveSerialDescriptor(
-        "TextAnchor",
-        kotlinx.serialization.descriptors.PrimitiveKind.STRING,
-    )
+object TextAnchorSerializer : KSerializer<TextAnchor> {
+    override val descriptor = PrimitiveSerialDescriptor("TextAnchor", PrimitiveKind.STRING)
 
-    override fun serialize(encoder: kotlinx.serialization.Encoding, value: TextAnchor) {
+    override fun serialize(encoder: Encoder, value: TextAnchor) {
         encoder.encodeString(value.name)
     }
 
-    override fun deserialize(decoder: kotlinx.serialization.Decoder): TextAnchor {
+    override fun deserialize(decoder: Decoder): TextAnchor {
         val raw = decoder.decodeString()
         return runCatching { TextAnchor.valueOf(raw) }.getOrElse {
             when (raw) {
@@ -144,21 +148,16 @@ object TextAnchorSerializer : kotlinx.serialization.KSerializer<TextAnchor> {
     }
 }
 
-object CaptionRotationSerializer : kotlinx.serialization.KSerializer<Float> {
-    override val descriptor = kotlinx.serialization.descriptors.PrimitiveSerialDescriptor(
-        "CaptionRotation",
-        kotlinx.serialization.descriptors.PrimitiveKind.FLOAT,
-    )
+object CaptionRotationSerializer : KSerializer<Float> {
+    override val descriptor = PrimitiveSerialDescriptor("CaptionRotation", PrimitiveKind.FLOAT)
 
-    override fun serialize(encoder: kotlinx.serialization.Encoding, value: Float) {
+    override fun serialize(encoder: Encoder, value: Float) {
         encoder.encodeFloat(value)
     }
 
-    override fun deserialize(decoder: kotlinx.serialization.Decoder): Float {
-        val d = decoder as? kotlinx.serialization.json.JsonDecoder
-            ?: return 0f
-        val prim = d.decodeJsonElement() as? kotlinx.serialization.json.JsonPrimitive
-            ?: return 0f
+    override fun deserialize(decoder: Decoder): Float {
+        val d = decoder as? JsonDecoder ?: return 0f
+        val prim = runCatching { d.decodeJsonElement() as? JsonPrimitive }.getOrNull() ?: return 0f
         prim.content.toFloatOrNull()?.let { return it }
         return when (prim.content) {
             "CW_90" -> 90f

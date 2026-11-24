@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.data.AiEditClient
+import com.emrobinso.floatpic.data.AiPromptStore
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -121,8 +122,8 @@ fun AiPanel(
                 prompt = sentPrompt,
                 lora = lora,
                 correction = correction,
-                onStage = { s ->
-                    stage = if (s == "upload") ctx.getString(R.string.ai_uploading)
+                onStage = { phase ->
+                    stage = if (phase == "upload") ctx.getString(R.string.ai_uploading)
                     else ctx.getString(R.string.ai_generating)
                 },
             )
@@ -186,25 +187,25 @@ fun AiPanel(
             Spacer(Modifier.height(5.dp))
             // 10 last prompts: tap to reuse, long press would be nicer but a tap is enough
             Row(
-                Modifier
+                modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 promptHistory.forEach { item ->
-                    PromptChip(item) { prompt = item }
+                    PromptChip(text = item) { prompt = item }
                 }
             }
         }
 
         Spacer(Modifier.height(6.dp))
         Row(
-            Modifier.horizontalScroll(rememberScrollState()),
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            LoraChip(ctx.getString(R.string.ai_lora_none), lora == null) { lora = null }
+            LoraChip(label = ctx.getString(R.string.ai_lora_none), active = lora == null) { lora = null }
             AiEditClient.LORAS.forEach { id ->
-                LoraChip(id, lora == id) { lora = id }
+                LoraChip(label = id, active = lora == id) { lora = id }
             }
         }
 
@@ -257,7 +258,7 @@ fun AiPanel(
             )
             Spacer(Modifier.height(4.dp))
             Row(
-                Modifier
+                modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),

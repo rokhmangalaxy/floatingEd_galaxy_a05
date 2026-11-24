@@ -1,7 +1,9 @@
 package com.emrobinso.floatpic.data
 
 import android.content.Context
-import org.json.JSONArray
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 
 /**
  * The last [MAX] AI prompts, newest first.
@@ -15,11 +17,13 @@ object AiPromptStore {
     private const val PREFS = "floatpic_ai"
     private const val KEY = "prompts"
 
+    private val json = Json { ignoreUnknownKeys = true }
+    private val listSerializer = ListSerializer(String.serializer())
+
     fun load(context: Context): List<String> = runCatching {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
             ?: return emptyList()
-        val arr = JSONArray(raw)
-        (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf { it.isNotBlank() } }
+        json.decodeFromString(listSerializer, raw).filter { it.isNotBlank() }
     }.getOrDefault(emptyList())
 
     /** Adds [text] at the front, drops duplicates and keeps the list at [MAX]. */
@@ -28,9 +32,9 @@ object AiPromptStore {
         if (clean.isEmpty()) return load(context)
         val next = (listOf(clean) + load(context).filter { it != clean }).take(MAX)
         runCatching {
-            val arr = JSONArray().apply { next.forEach { put(it) } }
+            val raw = json.encodeToString(listSerializer, next)
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putString(KEY, arr.toString()).apply()
+                .edit().putString(KEY, raw).apply()
         }
         return next
     }
