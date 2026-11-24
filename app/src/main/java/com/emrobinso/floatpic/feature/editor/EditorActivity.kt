@@ -72,6 +72,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.core.image.ImageLoader
 import com.emrobinso.floatpic.data.AiEditClient
+import com.emrobinso.floatpic.feature.ai.AiSessionState
 import kotlin.math.roundToInt
 import com.emrobinso.floatpic.data.DraftStore
 import com.emrobinso.floatpic.data.Exporter
