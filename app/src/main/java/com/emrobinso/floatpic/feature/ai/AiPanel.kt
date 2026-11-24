@@ -126,7 +126,7 @@ class AiSessionState(
     }
 
     /** Switching server invalidates the LoRA choice: ids differ per Space. */
-    fun setBackend(next: AiBackend) {
+    fun chooseBackend(next: AiBackend) {
         if (next == backend) return
         backend = next
         lora = null
@@ -264,7 +264,7 @@ fun AiPanel(
                 ServerChip(
                     label = b.label,
                     active = session.backend == b,
-                    onClick = { session.setBackend(b) },
+                    onClick = { session.chooseBackend(b) },
                 )
             }
         }
