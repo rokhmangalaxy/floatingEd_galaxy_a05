@@ -1279,8 +1279,6 @@ private fun TextPanel(
     onTextSize: (Float) -> Unit,
     onTextAnchor: (TextAnchor) -> Unit,
     onTextRotation: (TextRotation) -> Unit,
-    onAiApply: (Bitmap) -> Unit,
-    onInfo: (String) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
