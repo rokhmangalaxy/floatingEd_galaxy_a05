@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -84,7 +85,11 @@ object AiEditClient {
                     // res_multiple, vae_ref_mp, decoder_vae, keep_2x, hl_protect, hl_strength
                     buildJsonArray {
                         add(fileData)
-                        add(JsonPrimitive(""))            // image 2 unused
+                        // image 2 unused. MUST be null, not "" — Gradio validates every
+                        // argument against its type BEFORE the function runs, so an empty
+                        // string for an Optional image is rejected with
+                        // "Input should be a valid dictionary or instance of ImageData".
+                        add(JsonNull)
                         add(buildJsonArray { })           // no extra references
                         add(JsonPrimitive(effective))
                         add(JsonPrimitive(selector ?: "None"))
