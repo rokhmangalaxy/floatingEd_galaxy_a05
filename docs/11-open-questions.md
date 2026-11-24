@@ -115,6 +115,18 @@ Konsekuensi dari keputusan di atas sudah dijabarkan di dokumen 12 (teks), 13 (bu
       sehingga preview = hasil ekspor; draft lama tetap terbaca karena ada default.
 - [x] Tombol **Tempel** di panel teks (ambil dari clipboard).
 
+## v0.2.4 — teks, handle, AI
+
+- [x] **Keyboard tidak lagi muncul otomatis** saat panel Teks dibuka (auto-focus dihapus);
+      **Tempel** sekarang ikon saja dan mengisi field tanpa mengambil fokus.
+- [x] Kiri/tengah/kanan = **anchor** (posisi blok teks terhadap layar), bukan alignment;
+      ditambah **rotasi teks 90° / −90° / 270° / −270°**.
+- [x] **Handle geser** di atas kartu untuk memindahkan floating editor.
+- [x] **Tool AI** (guest, tanpa token) ke Space Qwen-Image-Edit-2511:
+      prompt + pilihan LoRA, hasil masuk **wadah hasil** (multi-hasil),
+      hasil terbaru langsung menimpa gambar kerja, dan kegagalan ditampilkan sebagai pesan.
+- [x] Icon row jadi dua baris (9 tool: +AI).
+
 ## Berikutnya (v0.3)
 
 1. Preset kontekstual (screenshot/portrait/meme) + preset simpan sendiri.
