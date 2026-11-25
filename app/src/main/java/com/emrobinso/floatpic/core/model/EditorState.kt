@@ -1,0 +1,170 @@
+package com.emrobinso.floatpic.core.model
+
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonPrimitive
+
+@Serializable
+enum class AspectPreset(val ratio: Float?, val outputWidth: Int, val outputHeight: Int) {
+    ORIGINAL(null, 0, 0),
+    SQUARE(1f, 1080, 1080),
+    PORTRAIT_4_5(4f / 5f, 1080, 1350),
+    STORY_9_16(9f / 16f, 1080, 1920),
+    LANDSCAPE_16_9(16f / 9f, 1920, 1080),
+    CLASSIC_3_2(3f / 2f, 1920, 1280),
+    CLASSIC_4_3(4f / 3f, 1440, 1080),
+    PORTRAIT_2_3(2f / 3f, 1280, 1920),
+    PORTRAIT_3_4(3f / 4f, 1080, 1440),
+    FIVE_4(5f / 4f, 1350, 1080),
+    PHONE_9_20(9f / 20f, 1080, 2400),
+}
+
+@Serializable
+enum class ScaleMode { FILL, FIT }
+
+@Serializable
+enum class AlignAnchor(val fx: Float, val fy: Float) {
+    TOP_LEFT(0f, 0f), TOP_CENTER(0.5f, 0f), TOP_RIGHT(1f, 0f),
+    CENTER_LEFT(0f, 0.5f), CENTER(0.5f, 0.5f), CENTER_RIGHT(1f, 0.5f),
+    BOTTOM_LEFT(0f, 1f), BOTTOM_CENTER(0.5f, 1f), BOTTOM_RIGHT(1f, 1f),
+}
+
+@Serializable
+enum class BackgroundKind { COLOR, GRADIENT, BLUR, PATTERN }
+
+@Serializable
+data class BackgroundSpec(
+    val kind: BackgroundKind = BackgroundKind.COLOR,
+    val color: Long = 0xFF111111,
+    val color2: Long = 0xFF2A0B12,
+    val angle: Float = 135f,
+    val blurStrength: Float = 24f,
+    val patternId: String = "dots",
+) {
+    companion object {
+        val Dark = BackgroundSpec(kind = BackgroundKind.COLOR, color = 0xFF111111)
+    }
+}
+
+@Serializable
+enum class TextPosition { TOP_CENTER, BOTTOM_CENTER }
+
+/**
+ * Where the caption sits in the frame — an ANCHOR, not typographic alignment:
+ * the whole text block is placed relative to the canvas edge / centre.
+ *
+ * This mirrors the 3x3 position grid used for the picture (AlignPreset), so the user can
+ * put the caption in any of the nine slots: top/middle/bottom × left/center/right.
+ */
+@Serializable(with = TextAnchorSerializer::class)
+enum class TextAnchor(val fx: Float, val fy: Float) {
+    TOP_LEFT(0f, 0f), TOP_CENTER(0.5f, 0f), TOP_RIGHT(1f, 0f),
+    CENTER_LEFT(0f, 0.5f), CENTER(0.5f, 0.5f), CENTER_RIGHT(1f, 0.5f),
+    BOTTOM_LEFT(0f, 1f), BOTTOM_CENTER(0.5f, 1f), BOTTOM_RIGHT(1f, 1f),
+}
+
+/** Typographic alignment of the lines inside the caption block. */
+@Serializable
+enum class TextAlign { LEFT, CENTER, RIGHT }
+
+
+
+@Serializable
+enum class TextStylePreset { WHITE_ON_BLACK, BLACK_ON_WHITE }
+
+@Serializable
+data class TextOverlay(
+    val text: String = "",
+    val position: TextPosition = TextPosition.BOTTOM_CENTER,
+    val style: TextStylePreset = TextStylePreset.WHITE_ON_BLACK,
+    val sizeFraction: Float = 0.075f,
+    /** position of the text block relative to the frame (3x3 grid) */
+    val anchor: TextAnchor = TextAnchor.BOTTOM_CENTER,
+    /** typographic alignment inside the block (only matters for multi-line) */
+    val align: TextAlign = TextAlign.CENTER,
+    /** rotation of the whole caption, in degrees (-180..180), set by a slider */
+    @Serializable(with = CaptionRotationSerializer::class)
+    val rotation: Float = 0f,
+) {
+    val isVisible: Boolean get() = text.isNotBlank()
+}
+
+/**
+ * Single source of truth for everything the renderer draws.
+ * Geometry in "source pixels" of the (downscaled but oriented) source bitmap.
+ */
+@Serializable
+data class Transform(
+    val scale: Float = 1f,
+    val offsetX: Float = 0f,
+    val offsetY: Float = 0f,
+    val rotation: Float = 0f,
+    val flipH: Boolean = false,
+    val flipV: Boolean = false,
+)
+
+@Serializable
+data class EditorState(
+    val aspect: AspectPreset = AspectPreset.ORIGINAL,
+    val scaleMode: ScaleMode = ScaleMode.FILL,
+    val transform: Transform = Transform(),
+    val background: BackgroundSpec = BackgroundSpec.Dark,
+    val paddingDp: Float = 0f,
+    val cornerDp: Float = 0f,
+    val shadow: Boolean = false,
+    val text: TextOverlay = TextOverlay(),
+) {
+    val hasVisualEdits: Boolean
+        get() = paddingDp > 0f || cornerDp > 0f || shadow || text.isVisible
+}
+
+/**
+ * Backwards compatible readers. Older drafts stored `anchor` as LEFT/CENTER/RIGHT and
+ * `rotation` as an enum name ("NONE" / "CW_90" …). Those history rows must keep opening,
+ * so both serializers accept the old spellings and always write the new shape.
+ */
+object TextAnchorSerializer : KSerializer<TextAnchor> {
+    override val descriptor = PrimitiveSerialDescriptor("TextAnchor", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: TextAnchor) {
+        encoder.encodeString(value.name)
+    }
+
+    override fun deserialize(decoder: Decoder): TextAnchor {
+        val raw = decoder.decodeString()
+        return runCatching { TextAnchor.valueOf(raw) }.getOrElse {
+            when (raw) {
+                "LEFT" -> TextAnchor.BOTTOM_LEFT
+                "CENTER" -> TextAnchor.BOTTOM_CENTER
+                "RIGHT" -> TextAnchor.BOTTOM_RIGHT
+                else -> TextAnchor.BOTTOM_CENTER
+            }
+        }
+    }
+}
+
+object CaptionRotationSerializer : KSerializer<Float> {
+    override val descriptor = PrimitiveSerialDescriptor("CaptionRotation", PrimitiveKind.FLOAT)
+
+    override fun serialize(encoder: Encoder, value: Float) {
+        encoder.encodeFloat(value)
+    }
+
+    override fun deserialize(decoder: Decoder): Float {
+        val d = decoder as? JsonDecoder ?: return 0f
+        val prim = runCatching { d.decodeJsonElement() as? JsonPrimitive }.getOrNull() ?: return 0f
+        prim.content.toFloatOrNull()?.let { return it }
+        return when (prim.content) {
+            "CW_90" -> 90f
+            "CCW_90" -> -90f
+            "CW_270" -> 270f
+            "CCW_270" -> -270f
+            else -> 0f
+        }
+    }
+}

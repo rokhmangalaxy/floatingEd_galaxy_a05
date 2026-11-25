@@ -1,0 +1,178 @@
+name: Build APK
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.ver.outputs.code }}
+      name: ${{ steps.ver.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: ver
+        run: |
+          # monotonically increasing versionCode: base + commit count (stable signing key
+          # + same applicationId => every new APK installs over the previous one)
+          COUNT=$(git rev-list --count HEAD)
+          CODE=$((10000 + COUNT))
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            NAME="0.1.0-pr${{ github.event.pull_request.number }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            NAME="${GITHUB_REF_NAME#v}"
+          else
+            NAME="0.1.0-$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)"
+          fi
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "versionCode=$CODE versionName=$NAME"
+
+  build:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Restore keystore from secret (optional override)
+        env:
+          KEY_B64: ${{ secrets.FLOATPIC_KEY_BASE64 }}
+        run: |
+          if [ -n "$KEY_B64" ]; then
+            mkdir -p app/keystore
+            printf '%s' "$KEY_B64" | base64 -d > app/keystore/floatpic.p12
+            echo "using keystore from secret"
+          else
+            echo "using committed dev keystore"
+          fi
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble release
+        env:
+          FLOATPIC_STORE_PASSWORD: ${{ secrets.FLOATPIC_STORE_PASSWORD || 'floatpic2026' }}
+          FLOATPIC_KEY_PASSWORD: ${{ secrets.FLOATPIC_KEY_PASSWORD || 'floatpic2026' }}
+          FLOATPIC_KEY_ALIAS: ${{ secrets.FLOATPIC_KEY_ALIAS || 'floatpic' }}
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleRelease \
+            -PbuildVersionCode=${{ needs.version.outputs.code }} \
+            -PbuildVersionName=${{ needs.version.outputs.name }} \
+            --no-daemon --stacktrace 2>&1 | tee build.log
+
+      # keep a readable copy of compiler diagnostics inside an issue (no log-download needed)
+      - name: Publish build log on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TITLE="CI build log"
+          DIAG=$(cat build.log /tmp/certs.txt 2>/dev/null | grep -nE "^(e|w): |error:|Could not resolve|FAILURE: Build failed|Signer #1 certificate SHA-256" | head -40 || true)
+          # configuration failures never print "e:" lines, so also keep the first part of
+          # the log (that is where "What went wrong" lives) and everything around it
+          HEAD=$(sed -n '1,80p' build.log 2>/dev/null | sed 's/\r//g' || true)
+          CAUSE=$(awk '/What went wrong/,/^\* Try/' build.log 2>/dev/null | head -30 || true)
+          BODY=$( (echo "--- diagnostics ---"; echo "$DIAG"; echo "--- head ---"; echo "$HEAD"; echo "--- cause ---"; echo "$CAUSE"; echo "--- tail ---"; tail -c 2500 build.log) 2>/dev/null | sed 's/\r//g' || echo "no log")
+          NUM=$(gh issue list --search 'CI build log in:title' --state open --json number --jq '.[0].number // empty')
+          if [ -z "$NUM" ]; then
+            gh issue create --title "$TITLE" \
+              --body "Build log capture. Latest run: ${{ github.run_id }}" >/dev/null
+            NUM=$(gh issue list --search 'CI build log in:title' --state open --json number --jq '.[0].number')
+          fi
+          {
+            echo "Run: ${{ github.run_id }} commit: ${GITHUB_SHA:0:7}";
+            echo '```'
+            echo "$BODY"
+            echo '```'
+          } > /tmp/comment.md
+          gh issue comment "$NUM" --body-file /tmp/comment.md
+
+      - name: Verify signature matches the committed key
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk \
+            | tee /tmp/certs.txt
+          EXPECTED="BD:E2:3A:AC:99:C0:1B:DD:73:E4:4D:35:3D:E8:E0:60:7F:FE:46:8A:15:A5:B4:7F:B7:78:48:50:50:94:01:0D"
+          NORM=$(tr -d ': \n' < /tmp/certs.txt | tr 'a-f' 'A-F')
+          EXP_NORM=$(echo "$EXPECTED" | tr -d ':')
+          if echo "$NORM" | grep -q "$EXP_NORM"; then
+            echo "certificate OK -> in-place updates guaranteed"
+          elif [ -n "${{ secrets.FLOATPIC_KEY_BASE64 }}" ]; then
+            echo "using a custom key from secrets; skipping fingerprint match"
+          else
+            echo "::error::signature changed - builds would require an uninstall"; exit 1
+          fi
+
+      - name: APK facts
+        working-directory: ${{ github.workspace }}
+        run: |
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -1)
+          "$AAPT2" dump badging app/build/outputs/apk/release/app-release.apk "2>/dev/null" \
+            | grep -E "^(package|application-label|sdkVersion|targetSdkVersion|launchable-activity)" \
+            > apk-facts.txt || true
+          cat apk-facts.txt
+
+      - name: Name the artifact
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk \
+             "dist/FloatPic-${{ needs.version.outputs.name }}.apk"
+          cp app/build/outputs/apk/release/app-release.apk dist/FloatPic-latest.apk
+          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FloatPic-${{ needs.version.outputs.name }}
+          path: dist/*
+          retention-days: 30
+
+      - name: Publish to rolling release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG=apk-latest
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --title "FloatPic APK" \
+              --notes "APK terbaru (build otomatis). Kunci tanda tangan sama di setiap build, jadi versi baru bisa dipasang menimpa tanpa uninstall."
+          gh release upload "$TAG" dist/*.apk dist/SHA256SUMS.txt --clobber
+
+          # keep the page tidy: drop older per-build APKs (the stable link is FloatPic-latest.apk)
+          CURRENT="FloatPic-${{ needs.version.outputs.name }}.apk"
+          gh api "repos/${{ github.repository }}/releases/tags/$TAG" --jq '.assets[] | "\(.id) \(.name)"' \
+            | while read -r id name; do
+                if [ "$name" = "FloatPic-latest.apk" ] || [ "$name" = "SHA256SUMS.txt" ] || [ "$name" = "$CURRENT" ]; then
+                  continue
+                fi
+                gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$id" >/dev/null 2>&1 || true
+              done
+
+          NOTES=$(printf 'APK terbaru (build otomatis dari `%s`).\n\n**versionName:** %s · **versionCode:** %s\n\nKunci tanda tangan sama di setiap build (SHA-256 `BD:E2:3A:...:01:0D`), `applicationId` sama, `versionCode` selalu naik → **pasang menimpa tanpa uninstall**.\n\n```\n%s\n```\n\nUnduh: `FloatPic-latest.apk` (link tetap).' \
+            "${GITHUB_SHA:0:7}" "${{ needs.version.outputs.name }}" "${{ needs.version.outputs.code }}" "$(cat apk-facts.txt 2>/dev/null || echo n/a)")
+          gh release edit "$TAG" --notes "$NOTES" >/dev/null || true
+          echo "### APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "versionName: ${{ needs.version.outputs.name }} (code ${{ needs.version.outputs.code }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/${{ github.repository }}/releases/download/apk-latest/FloatPic-latest.apk" >> "$GITHUB_STEP_SUMMARY"
