@@ -74,6 +74,7 @@ import kotlin.math.min
 import androidx.compose.ui.graphics.asImageBitmap
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.data.AiPromptStore
+import com.emrobinso.floatpic.data.AiQuota
 import com.emrobinso.floatpic.core.model.AspectPreset
 import com.emrobinso.floatpic.core.model.BackgroundKind
 import com.emrobinso.floatpic.core.model.BackgroundSpec
@@ -191,6 +192,7 @@ fun EditorScreen(
 ) {
     var tool by remember { mutableStateOf(Tool.NONE) }
     var guides by remember { mutableStateOf(false) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val extra = LocalExtra.current
     val scheme = MaterialTheme.colorScheme
     val radius = extra.cardRadius.dp
@@ -296,16 +298,120 @@ fun EditorScreen(
                         )
                     }
 
-                    // ---- history stepper -------------------------------------------------
-                    // Two chevrons on the INSIDE edges of the preview: tap to walk through
-                    // the 20 saved pictures without opening the History tool. They are drawn
-                    // over the picture, so nothing shifts.
-                    // trash: clears the preview back to the empty state
+                    // ---- preview shortcuts ----------------------------------------------
+                    // A single row on top of the picture: generate (only while a prompt is
+                    // typed), the per-IP counter, clipboard captions above/below, and the
+                    // trash that empties the preview. Drawn over the image, nothing shifts.
                     if (bitmap != null) {
-                        Box(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                        Row(
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (aiSession.prompt.isNotBlank() && !aiSession.busy) {
+                                // generate straight from the preview; the label carries the
+                                // per-IP counter so the allowance is always in sight
+                                Row(
+                                    Modifier
+                                        .height(26.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.primary)
+                                        .clickable {
+                                            aiSession.run(
+                                                bitmap,
+                                                null,
+                                                onAiApply,
+                                                onInfo,
+                                            )
+                                        }
+                                        .padding(horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    FloatIcons.Sparkle(
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(12.dp),
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        ctx.getString(
+                                            R.string.preview_generate,
+                                            aiSession.quota.used,
+                                            AiQuota.LIMIT,
+                                        ),
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                }
+                            }
+                            if (aiSession.prompt.isNotBlank() && aiSession.busy) {
+                                Text(
+                                    ctx.getString(
+                                        R.string.preview_generate_busy,
+                                        aiSession.elapsed,
+                                    ),
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .height(24.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = .8f))
+                                        .padding(horizontal = 7.dp, vertical = 5.dp),
+                                )
+                            }
+                            // caption from the clipboard, pinned above / below the picture
+                            PreviewShortcut(
+                                description = ctx.getString(R.string.preview_text_top),
+                                onTap = {
+                                val pasted = clipboard.getText()?.text?.trim()
+                                if (!pasted.isNullOrBlank()) {
+                                    onText(pasted)
+                                    onTextStyle(TextStylePreset.WHITE_ON_BLACK)
+                                    onTextAnchor(TextAnchor.TOP_CENTER)
+                                } else {
+                                    onInfo(ctx.getString(R.string.preview_clipboard_empty))
+                                }
+                                },
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(width = 28.dp, height = 26.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    EdgeGlyph(top = true)
+                                }
+                            }
+                            PreviewShortcut(
+                                description = ctx.getString(R.string.preview_text_bottom),
+                                onTap = {
+                                val pasted = clipboard.getText()?.text?.trim()
+                                if (!pasted.isNullOrBlank()) {
+                                    onText(pasted)
+                                    onTextStyle(TextStylePreset.WHITE_ON_BLACK)
+                                    onTextAnchor(TextAnchor.BOTTOM_CENTER)
+                                } else {
+                                    onInfo(ctx.getString(R.string.preview_clipboard_empty))
+                                }
+                                },
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(width = 28.dp, height = 26.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    EdgeGlyph(top = false)
+                                }
+                            }
                             Box(
                                 Modifier
-                                    .size(28.dp)
+                                    .size(26.dp)
                                     .clip(RoundedCornerShape(9.dp))
                                     .background(MaterialTheme.colorScheme.surface.copy(alpha = .72f))
                                     .clickable(onClick = onClearImage),
@@ -313,7 +419,7 @@ fun EditorScreen(
                             ) {
                                 FloatIcons.Trash(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(13.dp),
                                 )
                             }
                         }
@@ -602,6 +708,49 @@ private fun PromptAction(label: String, color: androidx.compose.ui.graphics.Colo
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 3.dp),
     )
+}
+
+/** Small preview shortcut: a glyph plus an accessibility description. */
+@Composable
+private fun PreviewShortcut(
+    description: String,
+    onTap: () -> Unit,
+    glyph: @Composable () -> Unit,
+) {
+    Box(
+        Modifier
+            .semantics { contentDescription = description }
+            .clickable(onClick = onTap),
+    ) { glyph() }
+}
+
+/**
+ * Two glyphs, no images: a rounded box with a bar pinned to its top edge (top glyph) or its
+ * bottom edge (bottom glyph), meaning "put the caption above / below the picture".
+ */
+@Composable
+private fun EdgeGlyph(top: Boolean) {
+    val scheme = MaterialTheme.colorScheme
+    androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = 1.3.dp.toPx()
+        drawRoundRect(
+            color = scheme.onSurface.copy(alpha = .55f),
+            topLeft = androidx.compose.ui.geometry.Offset(stroke, stroke),
+            size = androidx.compose.ui.geometry.Size(w - stroke * 2, h - stroke * 2),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
+        )
+        val barY = if (top) h * .3f else h * .7f
+        drawLine(
+            color = scheme.primary,
+            start = androidx.compose.ui.geometry.Offset(w * .22f, barY),
+            end = androidx.compose.ui.geometry.Offset(w * .78f, barY),
+            strokeWidth = 2.2.dp.toPx(),
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+        )
+    }
 }
 
 /** Chevron used by the preview's history stepper. */

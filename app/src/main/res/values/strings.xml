@@ -186,4 +186,9 @@
     <string name="home_editor_body">Bisa juga langsung membuka editor tanpa bubble.</string>
     <string name="home_open">Buka</string>
     <string name="home_footer">Petunjuk: bubble tetap melayang saat Anda membuka aplikasi lain. Ketuk bubble untuk menampilkan atau menyembunyikan editor.</string>
+    <string name="preview_generate">Buat %1$d/%2$d</string>
+    <string name="preview_generate_busy">Membuat… %1$ds</string>
+    <string name="preview_text_top">Tempel teks di atas tengah dari clipboard</string>
+    <string name="preview_text_bottom">Tempel teks di bawah tengah dari clipboard</string>
+    <string name="preview_clipboard_empty">Clipboard kosong — salin teks dulu.</string>
 </resources>

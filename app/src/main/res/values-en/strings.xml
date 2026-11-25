@@ -186,4 +186,9 @@
     <string name="home_editor_body">You can also open the editor directly, without the bubble.</string>
     <string name="home_open">Open</string>
     <string name="home_footer">Tip: the bubble keeps floating while you use other apps. Tap it to show or hide the editor.</string>
+    <string name="preview_generate">Generate %1$d/%2$d</string>
+    <string name="preview_generate_busy">Generating… %1$ds</string>
+    <string name="preview_text_top">Paste text at the top from the clipboard</string>
+    <string name="preview_text_bottom">Paste text at the bottom from the clipboard</string>
+    <string name="preview_clipboard_empty">Clipboard is empty — copy some text first.</string>
 </resources>

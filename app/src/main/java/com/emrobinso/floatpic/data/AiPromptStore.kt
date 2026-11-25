@@ -14,7 +14,7 @@ import kotlinx.serialization.json.Json
  */
 object AiPromptStore {
 
-    const val MAX = 10
+    const val MAX = 100
     private const val PREFS = "floatpic_ai"
     private const val KEY = "prompts"
     private const val KEY_BACKEND = "backend"
