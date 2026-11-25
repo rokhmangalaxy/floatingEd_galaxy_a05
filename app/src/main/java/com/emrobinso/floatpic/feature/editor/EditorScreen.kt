@@ -384,6 +384,7 @@ fun EditorScreen(
                                     description = ctx.getString(R.string.preview_text_clear),
                                     onTap = { onText("") },
                                     glyph = {
+                                        val errorColor = MaterialTheme.colorScheme.error
                                         Box(
                                             Modifier
                                                 .size(26.dp)
@@ -395,7 +396,7 @@ fun EditorScreen(
                                                 "T",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.error,
+                                                color = errorColor,
                                             )
                                             Box(
                                                 Modifier
@@ -404,7 +405,7 @@ fun EditorScreen(
                                             ) {
                                                 androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
                                                     drawLine(
-                                                        color = MaterialTheme.colorScheme.error,
+                                                        color = errorColor,
                                                         start = androidx.compose.ui.geometry.Offset(2.dp.toPx(), size.height - 2.dp.toPx()),
                                                         end = androidx.compose.ui.geometry.Offset(size.width - 2.dp.toPx(), 2.dp.toPx()),
                                                         strokeWidth = 1.6.dp.toPx(),
