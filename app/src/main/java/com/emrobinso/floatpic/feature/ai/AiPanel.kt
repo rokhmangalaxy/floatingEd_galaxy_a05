@@ -441,12 +441,14 @@ fun AiPanel(
                 onClick = { session.run(base, null, onApply, onInfo) },
             )
             if (session.busy) {
+                Box(Modifier.weight(1f)) {
                 AiStatusCard(
                     phase = phaseOf(session.stage),
                     stage = session.stage,
                     elapsed = session.elapsed,
                     onCancel = { session.cancel(onInfo) },
                 )
+                }
             } else {
                 session.error?.let { err ->
                     Text(
@@ -566,7 +568,7 @@ private fun AiStatusCard(
 
     Row(
         Modifier
-            .weight(1f)
+            .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(scheme.surfaceVariant.copy(alpha = .55f))
             .padding(horizontal = 8.dp, vertical = 5.dp),
