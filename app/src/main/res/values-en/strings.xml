@@ -149,4 +149,26 @@
     <string name="ai_working">Working</string>
     <string name="empty_add">Add a picture from the gallery</string>
     <string name="empty_clear">Empty the preview</string>
+    <string name="prompt_search">Search prompts…</string>
+    <string name="prompt_no_match">No matching prompt.</string>
+    <string name="prompt_star">Star</string>
+    <string name="prompt_starred">Starred</string>
+    <string name="prompt_copy">Copy</string>
+    <string name="prompt_rename">Edit</string>
+    <string name="prompt_save">Save</string>
+    <string name="prompt_cancel">Cancel</string>
+    <string name="prompt_uses">used %1$d×</string>
+    <string name="sheet_title">FloatPic bubble</string>
+    <string name="sheet_body">The bubble is a small handle floating over other apps. Tap it to show or hide the editor, hold it 1.6 s to end the session.</string>
+    <string name="sheet_step_one">1. Display over other apps</string>
+    <string name="sheet_step_two">2. Switch the bubble on</string>
+    <string name="sheet_granted">Already allowed</string>
+    <string name="sheet_not_granted">Not allowed yet</string>
+    <string name="sheet_granted_short">On</string>
+    <string name="sheet_grant">Allow</string>
+    <string name="sheet_bubble_on">The bubble is running</string>
+    <string name="sheet_bubble_off">The bubble is not running</string>
+    <string name="sheet_bubble_start">Start</string>
+    <string name="sheet_bubble_stop">Stop</string>
+    <string name="sheet_dismiss">Later</string>
 </resources>

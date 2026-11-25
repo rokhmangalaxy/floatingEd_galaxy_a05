@@ -149,4 +149,26 @@
     <string name="ai_working">Memproses</string>
     <string name="empty_add">Tambah gambar dari galeri</string>
     <string name="empty_clear">Kosongkan preview</string>
+    <string name="prompt_search">Cari prompt…</string>
+    <string name="prompt_no_match">Tidak ada prompt yang cocok.</string>
+    <string name="prompt_star">Bintang</string>
+    <string name="prompt_starred">Berbintang</string>
+    <string name="prompt_copy">Salin</string>
+    <string name="prompt_rename">Ganti</string>
+    <string name="prompt_save">Simpan</string>
+    <string name="prompt_cancel">Batal</string>
+    <string name="prompt_uses">dipakai %1$d×</string>
+    <string name="sheet_title">Bubble FloatPic</string>
+    <string name="sheet_body">Bubble adalah tombol kecil yang melayang di atas aplikasi lain. Ketuk bubble untuk menampilkan atau menyembunyikan editor, tahan 1,6 detik untuk menutup sesi.</string>
+    <string name="sheet_step_one">1. Izin di atas aplikasi lain</string>
+    <string name="sheet_step_two">2. Aktifkan bubble</string>
+    <string name="sheet_granted">Sudah diizinkan</string>
+    <string name="sheet_not_granted">Belum diizinkan</string>
+    <string name="sheet_granted_short">Aktif</string>
+    <string name="sheet_grant">Beri izin</string>
+    <string name="sheet_bubble_on">Bubble sedang berjalan</string>
+    <string name="sheet_bubble_off">Bubble belum aktif</string>
+    <string name="sheet_bubble_start">Mulai</string>
+    <string name="sheet_bubble_stop">Hentikan</string>
+    <string name="sheet_dismiss">Nanti saja</string>
 </resources>

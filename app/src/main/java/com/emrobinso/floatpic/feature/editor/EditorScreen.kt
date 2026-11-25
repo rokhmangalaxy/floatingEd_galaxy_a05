@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.min
 import androidx.compose.ui.graphics.asImageBitmap
 import com.emrobinso.floatpic.R
+import com.emrobinso.floatpic.data.AiPromptStore
 import com.emrobinso.floatpic.core.model.AspectPreset
 import com.emrobinso.floatpic.core.model.BackgroundKind
 import com.emrobinso.floatpic.core.model.BackgroundSpec
@@ -286,6 +287,15 @@ fun EditorScreen(
                         )
                     }
 
+                    // AI waiting state, drawn over the picture so the animation is where the
+                    // user looks: the preview, not a line of text in a panel.
+                    if (aiSession.busy) {
+                        com.emrobinso.floatpic.feature.ai.AiPreviewOverlay(
+                            stage = aiSession.stage,
+                            elapsed = aiSession.elapsed,
+                        )
+                    }
+
                     // ---- history stepper -------------------------------------------------
                     // Two chevrons on the INSIDE edges of the preview: tap to walk through
                     // the 20 saved pictures without opening the History tool. They are drawn
@@ -401,69 +411,197 @@ fun EditorScreen(
 private fun PromptsPanel(session: com.emrobinso.floatpic.feature.ai.AiSessionState) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    var filter by remember { mutableStateOf("") }
+    var renaming by remember { mutableStateOf<String?>(null) }
+    var draft by remember { mutableStateOf("") }
+
     SectionTitle(ctx.getString(R.string.panel_prompts_title))
     Spacer(Modifier.height(4.dp))
     Hint(ctx.getString(R.string.panel_prompts_hint))
     Spacer(Modifier.height(6.dp))
-    if (session.prompts.isEmpty()) {
-        Hint(ctx.getString(R.string.ai_manager_empty))
-        return
+
+    // search: the list can hold dozens of prompts, scanning beats scrolling
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(30.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, scheme.outline.copy(.45f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        if (filter.isEmpty()) {
+            Text(
+                ctx.getString(R.string.prompt_search),
+                fontSize = 10.sp,
+                color = scheme.onSurfaceVariant.copy(.6f),
+            )
+        }
+        androidx.compose.foundation.text.BasicTextField(
+            value = filter,
+            onValueChange = { filter = it },
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = scheme.onSurface),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
+    Spacer(Modifier.height(6.dp))
+
+    val pinned = remember(session.prompts) {
+        AiPromptStore.pinned(ctx)
+    }
+    val counted = remember(session.prompts, filter) { AiPromptStore.uses(ctx) }
+    val list = remember(session.prompts, filter, pinned) {
+        session.prompts
+            .filter { filter.isBlank() || it.contains(filter, ignoreCase = true) }
+            .sortedWith(compareByDescending<String> { it in pinned }.thenByDescending { counted[it] ?: 0 })
+    }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            ctx.getString(R.string.ai_manager_title, session.prompts.size),
+            ctx.getString(R.string.ai_manager_title, list.size),
             fontSize = 10.sp,
             color = scheme.onSurfaceVariant,
         )
         Spacer(Modifier.weight(1f))
-        Text(
-            ctx.getString(R.string.ai_manager_clear),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = scheme.error,
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .clickable { session.clearPrompts() }
-                .padding(horizontal = 8.dp, vertical = 3.dp),
-        )
+        if (session.prompts.isNotEmpty()) {
+            Text(
+                ctx.getString(R.string.ai_manager_clear),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = scheme.error,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable { session.clearPrompts() }
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+        }
     }
     Spacer(Modifier.height(4.dp))
+
+    if (list.isEmpty()) {
+        Hint(if (session.prompts.isEmpty()) ctx.getString(R.string.ai_manager_empty) else ctx.getString(R.string.prompt_no_match))
+        return
+    }
+
     Column(
         Modifier
             .fillMaxWidth()
-            .heightIn(max = 150.dp)
+            .heightIn(max = 158.dp)
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        session.prompts.forEach { item ->
-            Row(
+        list.forEach { item ->
+            val star = item in pinned
+            val count = counted[item] ?: 0
+            Column(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(scheme.surfaceVariant.copy(alpha = .4f))
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(scheme.surfaceVariant.copy(alpha = if (star) .55f else .35f))
+                    .padding(horizontal = 7.dp, vertical = 5.dp),
             ) {
-                Text(
-                    item,
-                    fontSize = 10.sp,
-                    maxLines = 2,
-                    color = scheme.onSurface,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { session.prompt = item },
-                )
-                Spacer(Modifier.width(6.dp))
-                Box(
-                    Modifier
-                        .size(22.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { session.deletePrompt(item) },
-                    contentAlignment = Alignment.Center,
-                ) { FloatIcons.Trash(tint = scheme.error, modifier = Modifier.size(14.dp)) }
+                if (renaming == item) {
+                    // rename in place: a text field + save/cancel keeps the same prompt id
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = scheme.onSurface),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(scheme.surface)
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                        )
+                        Text(
+                            ctx.getString(R.string.prompt_save),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = scheme.primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable(enabled = draft.isNotBlank()) {
+                                    session.renamePrompt(item, draft)
+                                    renaming = null
+                                }
+                                .padding(horizontal = 7.dp, vertical = 4.dp),
+                        )
+                        Text(
+                            ctx.getString(R.string.prompt_cancel),
+                            fontSize = 9.sp,
+                            color = scheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { renaming = null }
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                        )
+                    }
+                } else {
+                    Text(
+                        item,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        color = scheme.onSurface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                session.prompt = item
+                                session.bumpPrompt(item)
+                            },
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (count > 0) {
+                            Text(
+                                ctx.getString(R.string.prompt_uses, count),
+                                fontSize = 8.sp,
+                                color = scheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        PromptAction(
+                            label = if (star) ctx.getString(R.string.prompt_starred) else ctx.getString(R.string.prompt_star),
+                            color = if (star) scheme.primary else scheme.onSurfaceVariant,
+                        ) { session.pinPrompt(item, !star) }
+                        PromptAction(ctx.getString(R.string.prompt_copy), scheme.primary) {
+                            clipboard.setText(androidx.compose.ui.text.AnnotatedString(item))
+                        }
+                        PromptAction(ctx.getString(R.string.prompt_rename), scheme.primary) {
+                            draft = item
+                            renaming = item
+                        }
+                        Box(
+                            Modifier
+                                .size(22.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { session.deletePrompt(item) },
+                            contentAlignment = Alignment.Center,
+                        ) { FloatIcons.Trash(tint = scheme.error, modifier = Modifier.size(13.dp)) }
+                    }
+                }
             }
         }
     }
+}
+
+/** Tiny text button used by the prompt rows. */
+@Composable
+private fun PromptAction(label: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Text(
+        label,
+        fontSize = 8.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = color,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+    )
 }
 
 /** Chevron used by the preview's history stepper. */

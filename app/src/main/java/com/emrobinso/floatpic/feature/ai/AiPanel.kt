@@ -138,6 +138,21 @@ class AiSessionState(
         prompts = AiPromptStore.remove(context, text)
     }
 
+    fun renamePrompt(from: String, to: String) {
+        prompts = AiPromptStore.rename(context, from, to)
+        if (prompt == from) prompt = to.trim()
+    }
+
+    fun pinPrompt(text: String, on: Boolean) {
+        AiPromptStore.setPinned(context, text, on)
+        // recompose the manager: the star lives in the store, not in the list
+        prompts = AiPromptStore.load(context)
+    }
+
+    fun bumpPrompt(text: String) {
+        AiPromptStore.bump(context, text)
+    }
+
     fun clearPrompts() {
         prompts = AiPromptStore.clear(context)
     }
@@ -192,6 +207,7 @@ class AiSessionState(
         log.clear()
         val sentPrompt = prompt
         pushPrompt(sentPrompt)
+        AiPromptStore.bump(context, sentPrompt)
         note("app ${android.os.Build.VERSION.RELEASE} / ${android.os.Build.MODEL}")
         note("mulai: prompt=\"${sentPrompt.take(80)}\" lora=${lora ?: backend.noStyle ?: "-"}")
         note("sumber preview ${bmp.width}x${bmp.height}")
@@ -601,12 +617,71 @@ private fun AiStatusCard(
     }
 }
 
+/**
+ * The waiting state drawn ON the picture: the user asked for the preview itself to carry
+ * the animation (hourglass while queued, wand while generating, arrow while downloading).
+ */
+@Composable
+fun AiPreviewOverlay(stage: String, elapsed: Int) {
+    val scheme = MaterialTheme.colorScheme
+    val transition = rememberInfiniteTransition(label = "ai-preview")
+    val spin by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart),
+        label = "spin",
+    )
+    val pulse by transition.animateFloat(
+        initialValue = .35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+        label = "pulse",
+    )
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = .38f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                Modifier
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(scheme.surface.copy(alpha = .94f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                PhaseGlyph(phase = phaseOf(stage), spin = spin, pulse = pulse)
+            }
+            Spacer(Modifier.height(7.dp))
+            Text(
+                stage.ifBlank { "…" },
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = Color.White,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = .55f))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                "${elapsed}s",
+                fontSize = 8.sp,
+                color = Color.White.copy(alpha = .8f),
+            )
+        }
+    }
+}
+
 /** Vector glyphs: no assets, drawn with the theme colour. */
 @Composable
 private fun PhaseGlyph(phase: AiPhase, spin: Float, pulse: Float) {
     val scheme = MaterialTheme.colorScheme
     val tint = scheme.primary
-    Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
         when (phase) {
             // hourglass: two triangles, top one pulses
             AiPhase.QUEUE -> Canvas(Modifier.size(16.dp)) {

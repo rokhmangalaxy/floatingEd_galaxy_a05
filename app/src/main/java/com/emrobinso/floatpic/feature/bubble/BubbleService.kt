@@ -104,6 +104,7 @@ class BubbleService : Service() {
         )
         // A rejected FGS notification (Android 13+ blocked notifications, OEM policy) used
         // to throw here and the service died before the bubble could ever be added.
+        BubbleState.markRunning(true)
         runCatching { startForegroundWithNotification() }
             .onFailure { stopSelfSafely() }
     }
@@ -120,16 +121,33 @@ class BubbleService : Service() {
                 closeApp()
                 return START_NOT_STICKY
             }
-            ACTION_HIDE -> {
-                hideBubble()
-                return START_NOT_STICKY
+            ACTION_EDITOR_SHOWN -> {
+                // the editor is on screen: drop the bubble but KEEP the service, so the next
+                // minimize (or a tap after the user closes the editor) is instant
+                dropView()
+                return START_STICKY
             }
-            ACTION_UPDATE_NOTIF -> startForegroundWithNotification()
+            ACTION_HIDE -> {
+                if (sessionId == null) {
+                    hideBubble()
+                    return START_NOT_STICKY
+                }
+                dropView()
+                return START_STICKY
+            }
+            ACTION_UPDATE_NOTIF -> {
+                runCatching { startForegroundWithNotification() }
+                return START_STICKY
+            }
         }
+
         intent?.getStringExtra(EXTRA_SESSION)?.let { sessionId = it }
-        intent?.getStringExtra(EXTRA_THUMB_URI)?.let { loadThumb(Uri.parse(it)) }
+        intent?.getStringExtra(EXTRA_THUMB_URI)?.let { uri -> loadThumb(Uri.parse(uri)) }
+        // never let a missing FGS notification kill the bubble: it is the whole point of
+        // the app, and the service is allowed to run without the badge on most ROMs
+        runCatching { startForegroundWithNotification() }
+
         if (!Settings.canDrawOverlays(this)) {
-            // permission was revoked while the app was alive
             Toast.makeText(this, R.string.bubble_permission_denied, Toast.LENGTH_LONG).show()
             stopSelfSafely()
             return START_NOT_STICKY
@@ -141,6 +159,12 @@ class BubbleService : Service() {
             return START_NOT_STICKY
         }
         return START_STICKY
+    }
+
+    /** Removes the bubble view without touching the service or the session. */
+    private fun dropView() {
+        runCatching { if (view != null) windowManager.removeView(view) }
+        view = null
     }
 
     private fun loadThumb(uri: Uri) {
@@ -192,7 +216,9 @@ class BubbleService : Service() {
     }
 
     private fun restoreIntent(): Intent {
-        val id = sessionId ?: return Intent(this, EditorActivity::class.java)
+        val id = sessionId
+            ?: return Intent(this, EditorActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         return ShareIntents.editorIntentForDraft(this, id)
     }
 
@@ -237,8 +263,15 @@ class BubbleService : Service() {
             onDrag = { dx, dy -> dragBy(dx, dy) },
             onDragEnd = { snapToEdge() },
             onTap = {
+                // bring the editor back WITHOUT killing the bubble: it returns on minimize
                 runCatching {
-                    startActivity(restoreIntent().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    startActivity(
+                        restoreIntent().addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
+                        ),
+                    )
                 }
             },
             onClose = {
@@ -304,6 +337,7 @@ class BubbleService : Service() {
     }
 
     override fun onDestroy() {
+        BubbleState.markRunning(false)
         idleJob?.cancel()
         runCatching { unregisterReceiver(screenReceiver) }
         runCatching { if (view != null) windowManager.removeView(view) }
@@ -319,10 +353,30 @@ class BubbleService : Service() {
         const val ACTION_UPDATE_NOTIF = "com.emrobinso.floatpic.bubble.UPDATE_NOTIF"
         const val ACTION_RESTORE = "com.emrobinso.floatpic.bubble.RESTORE"
         const val ACTION_HIDE = "com.emrobinso.floatpic.bubble.HIDE"
+        const val ACTION_EDITOR_SHOWN = "com.emrobinso.floatpic.bubble.EDITOR_SHOWN"
         const val EXTRA_SESSION = "bubble.session"
         const val EXTRA_THUMB_URI = "bubble.thumb"
         private const val CHANNEL_ID = "floatpic_bubble"
         private const val NOTIFICATION_ID = 42
+
+        /** Bubble with no draft behind it: tapping only brings the editor back. */
+        fun startEmpty(context: Context) {
+            val intent = Intent(context, BubbleService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /** The editor is visible: hide the bubble but keep the service for the next minimize. */
+        fun editorShown(context: Context) {
+            runCatching {
+                context.startService(
+                    Intent(context, BubbleService::class.java).setAction(ACTION_EDITOR_SHOWN),
+                )
+            }
+        }
 
         fun start(context: Context, sessionId: String, thumbUri: Uri?) {
             val intent = Intent(context, BubbleService::class.java).apply {
@@ -354,11 +408,21 @@ class BubbleService : Service() {
 
         fun canDrawOverlays(context: Context): Boolean =
             android.provider.Settings.canDrawOverlays(context)
+
+        val isRunning: Boolean get() = BubbleState.isRunning
     }
 }
 
 /** UI state shared between the service and the bubble composable. */
 object BubbleState {
+    /** true while the service (and so the bubble launcher) is alive */
+    var isRunning: Boolean = false
+        private set
+
+    fun markRunning(on: Boolean) {
+        isRunning = on
+    }
+
     val reduce = mutableStateOf(false)
 }
 

@@ -22,7 +22,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class UiState(
-    val loading: Boolean = true,
+    /**
+     * Starts FALSE: a cold start shows the empty preview straight away. It used to start
+     * true, so the very first frame was a spinner even though there was nothing to load —
+     * the "preview langsung animasi loading" the user saw on every launch.
+     */
+    val loading: Boolean = false,
     val error: String? = null,
     val state: EditorState = EditorState(),
     val theme: AppTheme = AppTheme.MAROON_DARK,
