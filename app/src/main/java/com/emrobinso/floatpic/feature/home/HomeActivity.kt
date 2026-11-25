@@ -52,7 +52,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.data.CrashLog
 import com.emrobinso.floatpic.feature.bubble.BubbleService
-import com.emrobinso.floatpic.feature.editor.EditorActivity
 import com.emrobinso.floatpic.ui.icons.FloatIcons
 import com.emrobinso.floatpic.ui.theme.AppTheme
 import com.emrobinso.floatpic.ui.theme.FloatPicTheme
@@ -226,14 +225,10 @@ class HomeActivity : ComponentActivity() {
     }
 
     private fun openEditor() {
-        // FLAG_ACTIVITY_NO_ANIMATION: the editor is translucent, a slide over this dark
-        // screen would flash the whole launcher card behind the floating editor
-        runCatching {
-            startActivity(
-                Intent(this, EditorActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
+        // the editor is an overlay window now, so nothing has to be launched on top of it
+        BubbleService.showEditor(this)
+        // step back to the home screen: the editor floats above whatever the user was doing
+        finish()
     }
 }
 

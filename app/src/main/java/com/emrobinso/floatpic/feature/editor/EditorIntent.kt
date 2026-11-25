@@ -33,7 +33,7 @@ data class DraftSnapshot(
 object ShareIntents {
 
     fun editorIntentForShare(context: Context, uri: Uri): Intent =
-        Intent(context, EditorActivity::class.java).apply {
+        Intent(context, EditorHostActivity::class.java).apply {
             action = Intent.ACTION_SEND
             type = "image/*"
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -41,7 +41,7 @@ object ShareIntents {
         }
 
     fun editorIntentForDraft(context: Context, sessionId: String): Intent =
-        Intent(context, EditorActivity::class.java).apply {
+        Intent(context, EditorHostActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra(EXTRA_RESTORE_SESSION, sessionId)
         }

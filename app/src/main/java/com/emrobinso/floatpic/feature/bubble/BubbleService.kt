@@ -26,7 +26,6 @@ import android.widget.Toast
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.core.image.ImageLoader
 import com.emrobinso.floatpic.data.DraftStore
-import com.emrobinso.floatpic.feature.editor.EditorActivity
 import com.emrobinso.floatpic.feature.editor.ShareIntents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +55,8 @@ class BubbleService : Service() {
     private var lastX = 0f
     private var lastY = 0f
     private var dragging = false
+    private var sessionRef: EditorSessionState? = null
+    private var editor: EditorOverlay? = null
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -97,6 +98,22 @@ class BubbleService : Service() {
                 closeApp()
                 return START_NOT_STICKY
             }
+            ACTION_TOGGLE_EDITOR -> {
+                toggleEditor()
+                return START_STICKY
+            }
+            ACTION_SHOW_EDITOR -> {
+                showEditor(intent.getStringExtra(EXTRA_SESSION))
+                return START_STICKY
+            }
+            ACTION_OPEN_URI -> {
+                val uri = intent.data
+                if (uri != null) {
+                    showEditor(null)
+                    sessionRef?.openUri(uri)
+                }
+                return START_STICKY
+            }
             ACTION_EDITOR_SHOWN -> {
                 // the editor is on screen: drop the bubble but KEEP the service, so the next
                 // minimize (or a tap after the user closes the editor) is instant
@@ -135,6 +152,67 @@ class BubbleService : Service() {
             return START_NOT_STICKY
         }
         return START_STICKY
+    }
+
+    /** The session outlives every window: created once, kept while the service lives. */
+    private fun session(): EditorSessionState =
+        sessionRef ?: EditorSessionState(this, scope).also { state ->
+            state.theme = runCatching { DraftStore.theme(this) }.getOrNull() ?: state.theme
+            state.vm.setTheme(state.theme)
+            state.refreshHistory()
+            // a bubble already up: the overlay may sit on top of it, so drop the bubble view
+            sessionRef = state
+        }
+
+    private fun showEditor(draftId: String?) {
+        val state = session()
+        if (editor == null) {
+            editor = EditorOverlay(
+                context = this,
+                session = state,
+                onMinimize = { hideEditor() },
+                onClose = { scope.launch { closeEditor() } },
+                onOpenGallery = { GalleryRequest.pending = true; openGallery() },
+            )
+        }
+        // the overlay IS the editor now, so the bubble must not sit on top of it
+        if (editor?.isShowing != true) dropView()
+        editor?.show()
+        if (draftId != null) state.restoreDraft(draftId)
+    }
+
+    private fun hideEditor() {
+        editor?.hide()
+        // back to the bubble, so the session is never unreachable
+        if (view == null && Settings.canDrawOverlays(this)) runCatching { showBubble() }
+    }
+
+    private fun toggleEditor() {
+        if (editor?.isShowing == true) hideEditor() else showEditor(null)
+    }
+
+    private fun closeEditor() {
+        val state = sessionRef
+        if (state != null) {
+            runCatching { state.autosave(force = true) }
+            runCatching { state.saveDraft("session_${System.currentTimeMillis()}") }
+        }
+        editor?.hide()
+        editor = null
+        sessionRef = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun openGallery() {
+        runCatching {
+            val intent = Intent(this, com.emrobinso.floatpic.feature.editor.EditorHostActivity::class.java)
+                .setAction(com.emrobinso.floatpic.feature.editor.EditorHostActivity.ACTION_PICK)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        }.onFailure {
+            Toast.makeText(this, R.string.open_failed, Toast.LENGTH_SHORT).show()
+        }
     }
 
     /** Removes the bubble view without touching the service or the session. */
@@ -209,12 +287,13 @@ class BubbleService : Service() {
         }
     }
 
-    private fun restoreIntent(): Intent {
-        val id = sessionId
-            ?: return Intent(this, EditorActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        return ShareIntents.editorIntentForDraft(this, id)
-    }
+    /**
+     * Notification tap = show the editor overlay. A PendingIntent needs a target Activity,
+     * so the invisible host does the forwarding without ever showing a screen.
+     */
+    private fun restoreIntent(): Intent =
+        Intent(this, com.emrobinso.floatpic.feature.editor.EditorHostActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
     /**
      * The bubble is a plain [android.widget.ImageView], NOT a ComposeView.
@@ -332,19 +411,7 @@ class BubbleService : Service() {
     }
 
     /** Brings the editor forward WITHOUT killing the bubble: it returns on minimize. */
-    private fun openEditor() {
-        runCatching {
-            startActivity(
-                restoreIntent().addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
-                ),
-            )
-        }
-        // the editor is on screen now, so the bubble would only sit on top of it
-        dropView()
-    }
+    private fun openEditor() = toggleEditor()
 
     /**
      * Draws the bubble: cream disc, shadow, optional thumbnail or the brand spark, and the
@@ -441,16 +508,11 @@ class BubbleService : Service() {
     private fun closeApp() {
         cancelHold()
         dropView()
+        editor?.hide()
+        editor = null
+        sessionRef = null
         val id = sessionId
         if (id != null) scope.launch { DraftStore.clear(this@BubbleService, id) }
-        runCatching {
-            startActivity(
-                Intent(this, EditorActivity::class.java).apply {
-                    action = ACTION_FINISH_APP
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                },
-            )
-        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -460,6 +522,9 @@ class BubbleService : Service() {
         idleJob?.cancel()
         cancelHold()
         runCatching { unregisterReceiver(screenReceiver) }
+        editor?.hide()
+        editor = null
+        sessionRef = null
         dropView()
         thumb?.recycle()
         thumb = null
@@ -475,6 +540,9 @@ class BubbleService : Service() {
         const val ACTION_RESTORE = "com.emrobinso.floatpic.bubble.RESTORE"
         const val ACTION_HIDE = "com.emrobinso.floatpic.bubble.HIDE"
         const val ACTION_EDITOR_SHOWN = "com.emrobinso.floatpic.bubble.EDITOR_SHOWN"
+        const val ACTION_TOGGLE_EDITOR = "com.emrobinso.floatpic.bubble.TOGGLE_EDITOR"
+        const val ACTION_SHOW_EDITOR = "com.emrobinso.floatpic.bubble.SHOW_EDITOR"
+        const val ACTION_OPEN_URI = "com.emrobinso.floatpic.bubble.OPEN_URI"
         const val EXTRA_SESSION = "bubble.session"
         const val EXTRA_THUMB_URI = "bubble.thumb"
         private const val CHANNEL_ID = "floatpic_bubble"
@@ -487,6 +555,44 @@ class BubbleService : Service() {
                 context.startForegroundService(intent)
             } else {
                 context.startService(intent)
+            }
+        }
+
+        /** Tap on the bubble: show the editor window, or hide it when it is already open. */
+        fun toggleEditor(context: Context) {
+            runCatching {
+                context.startService(
+                    Intent(context, BubbleService::class.java).setAction(ACTION_TOGGLE_EDITOR),
+                )
+            }
+        }
+
+        /** Open a picture in a new overlay session (share, gallery pick, history). */
+        fun openInEditor(context: Context, uri: Uri) {
+            runCatching {
+                val intent = Intent(context, BubbleService::class.java).apply {
+                    action = ACTION_OPEN_URI
+                    data = uri
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            }
+        }
+
+        /** Bring up an empty editor window (the "open editor" button on the home screen). */
+        fun showEditor(context: Context, draftId: String? = null) {
+            runCatching {
+                val intent = Intent(context, BubbleService::class.java)
+                    .setAction(ACTION_SHOW_EDITOR)
+                    .putExtra(EXTRA_SESSION, draftId)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
             }
         }
 
@@ -533,6 +639,15 @@ class BubbleService : Service() {
 
         val isRunning: Boolean get() = BubbleState.isRunning
     }
+}
+
+/**
+ * The overlay window cannot use ActivityResult launchers, so a gallery pick is started as a
+ * plain Intent and the outcome comes back through [EditorHostActivity], which forwards the
+ * uri here. [pending] marks that the picker was opened by the editor.
+ */
+object GalleryRequest {
+    var pending: Boolean = false
 }
 
 /** What the rest of the app needs to know about the service. */

@@ -26,34 +26,25 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.FloatPic">
 
+        <!-- Doorway: shares and picker results arrive here and go to the overlay editor -->
         <activity
-            android:name=".feature.editor.EditorActivity"
+            android:name=".feature.editor.EditorHostActivity"
             android:exported="true"
-            android:label="@string/share_label"
-            android:launchMode="singleTop"
-            android:theme="@style/Theme.FloatPic.Translucent"
-            android:windowSoftInputMode="adjustResize">
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.FloatPic.Invisible">
 
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
-                <data android:mimeType="image/png" />
-                <data android:mimeType="image/jpeg" />
-                <data android:mimeType="image/webp" />
-                <data android:mimeType="image/gif" />
-                <data android:mimeType="image/heic" />
-                <data android:mimeType="image/heif" />
-                <data android:mimeType="image/bmp" />
             </intent-filter>
 
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
-                <data android:mimeType="image/png" />
-                <data android:mimeType="image/jpeg" />
-                <data android:mimeType="image/webp" />
             </intent-filter>
 
             <intent-filter>
