@@ -401,6 +401,31 @@ class EditorViewModel : ViewModel() {
         mutate { it.copy(transform = it.transform.copy(offsetX = tx, offsetY = ty)) }
     }
 
+    /** Empties the editor: used by the trash shortcut on the preview. */
+    fun clearSession() {
+        source?.recycle()
+        source = null
+        sourceFile = null
+        if (baseSource !== null && baseSource !== source) baseSource?.recycle()
+        baseSource = null
+        baseFile = null
+        editBase = EditorState()
+        committed = EditorState()
+        undo.clear()
+        redo.clear()
+        _ui.update {
+            it.copy(
+                loading = false,
+                error = null,
+                state = EditorState(),
+                canUndo = false,
+                canRedo = false,
+                dirty = false,
+                sourceReplaced = false,
+            )
+        }
+    }
+
     fun bubbleThumb(): Bitmap? = source?.let { EditorRenderer.bubbleThumb(it) }
 
     /** Snapshot of the editing base without any AI result, for the history row. */

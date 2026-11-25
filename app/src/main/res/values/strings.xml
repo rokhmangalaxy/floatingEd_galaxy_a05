@@ -136,4 +136,17 @@
     <string name="ai_quota_recheck">Cek IP</string>
     <string name="action_reset_edits">Reset editan</string>
     <string name="reset_edits_done">Editan dibersihkan, gambar tetap</string>
+    <string name="tool_prompts">Prompt</string>
+    <string name="panel_prompts_title">Manajer prompt</string>
+    <string name="panel_prompts_hint">Ketuk untuk memakai, ikon sampah untuk menghapus.</string>
+    <string name="ai_manager">Prompt</string>
+    <string name="ai_manager_title">Prompt tersimpan (%1$d)</string>
+    <string name="ai_manager_clear">Hapus semua</string>
+    <string name="ai_manager_empty">Belum ada prompt tersimpan.</string>
+    <string name="ai_clear">Bersihkan</string>
+    <string name="ai_stage_queued">menunggu antrean</string>
+    <string name="ai_running">Proses…</string>
+    <string name="ai_working">Memproses</string>
+    <string name="empty_add">Tambah gambar dari galeri</string>
+    <string name="empty_clear">Kosongkan preview</string>
 </resources>

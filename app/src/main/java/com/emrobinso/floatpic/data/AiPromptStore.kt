@@ -27,6 +27,27 @@ object AiPromptStore {
         json.decodeFromString(listSerializer, raw).filter { it.isNotBlank() }
     }.getOrDefault(emptyList())
 
+    /** Drops one saved prompt. */
+    fun remove(context: Context, text: String): List<String> {
+        val next = load(context).filter { it != text }
+        write(context, next)
+        return next
+    }
+
+    /** Drops every saved prompt. */
+    fun clear(context: Context): List<String> {
+        write(context, emptyList())
+        return emptyList()
+    }
+
+    private fun write(context: Context, list: List<String>) {
+        runCatching {
+            val raw = json.encodeToString(listSerializer, list)
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(KEY, raw).apply()
+        }
+    }
+
     /** Which AI server was picked last (its name, see [AiBackend]). */
     fun backend(context: Context): String? = runCatching {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_BACKEND, null)

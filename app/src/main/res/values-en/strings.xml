@@ -136,4 +136,17 @@
     <string name="ai_quota_recheck">Check IP</string>
     <string name="action_reset_edits">Reset edits</string>
     <string name="reset_edits_done">Edits cleared, picture kept</string>
+    <string name="tool_prompts">Prompts</string>
+    <string name="panel_prompts_title">Prompt manager</string>
+    <string name="panel_prompts_hint">Tap to reuse, trash icon to delete.</string>
+    <string name="ai_manager">Prompts</string>
+    <string name="ai_manager_title">Saved prompts (%1$d)</string>
+    <string name="ai_manager_clear">Clear all</string>
+    <string name="ai_manager_empty">No saved prompts yet.</string>
+    <string name="ai_clear">Clear</string>
+    <string name="ai_stage_queued">waiting in queue</string>
+    <string name="ai_running">Working…</string>
+    <string name="ai_working">Working</string>
+    <string name="empty_add">Add a picture from the gallery</string>
+    <string name="empty_clear">Empty the preview</string>
 </resources>

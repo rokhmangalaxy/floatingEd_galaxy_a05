@@ -25,12 +25,15 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -87,7 +90,7 @@ import com.emrobinso.floatpic.ui.theme.LocalExtra
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT, MIRROR, ROTATE, RATIO, AI, HISTORY, RESET }
+enum class Tool { NONE, CROP, FRAME, BACKGROUND, TEXT, MIRROR, ROTATE, RATIO, AI, PROMPTS, HISTORY, RESET }
 
 /** Label shown on the ratio chip. */
 fun AspectPreset.chipLabel(): String = when (this) {
@@ -177,6 +180,8 @@ fun EditorScreen(
     onAiApply: (Bitmap) -> Unit,
     onInfo: (String) -> Unit,
     onPickImage: () -> Unit,
+    /** trash: throw the current picture away and go back to the empty preview */
+    onClearImage: () -> Unit,
     history: List<com.emrobinso.floatpic.data.HistoryEntry>,
     onOpenHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     onDeleteHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
@@ -265,7 +270,7 @@ fun EditorScreen(
                     when {
                         loading -> LoadingState()
                         error != null -> ErrorState(error)
-                        bitmap == null -> EmptyState(onPickImage)
+                        bitmap == null -> EmptyState(onPickImage, onClearImage)
                         else -> EditorViewport(
                             state = state,
                             bitmap = bitmap,
@@ -285,6 +290,25 @@ fun EditorScreen(
                     // Two chevrons on the INSIDE edges of the preview: tap to walk through
                     // the 20 saved pictures without opening the History tool. They are drawn
                     // over the picture, so nothing shifts.
+                    // trash: clears the preview back to the empty state
+                    if (bitmap != null) {
+                        Box(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                            Box(
+                                Modifier
+                                    .size(28.dp)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = .72f))
+                                    .clickable(onClick = onClearImage),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                FloatIcons.Trash(
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
+                        }
+                    }
+
                     if (history.isNotEmpty() && bitmap != null) {
                         val idx = historyCurrent.coerceIn(0, history.lastIndex)
                         Box(Modifier.align(Alignment.CenterStart)) {
@@ -365,6 +389,79 @@ fun EditorScreen(
             )
 
             ActionBar(onSave = onSave, onShare = onShare, onCommitEdit = onCommitEdit)
+        }
+    }
+}
+
+/**
+ * Prompt manager as its own dock entry: the saved prompts, tap to reuse, trash to remove,
+ * and a bulk clear. Same store as the AI panel's manager button.
+ */
+@Composable
+private fun PromptsPanel(session: com.emrobinso.floatpic.feature.ai.AiSessionState) {
+    val scheme = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
+    SectionTitle(ctx.getString(R.string.panel_prompts_title))
+    Spacer(Modifier.height(4.dp))
+    Hint(ctx.getString(R.string.panel_prompts_hint))
+    Spacer(Modifier.height(6.dp))
+    if (session.prompts.isEmpty()) {
+        Hint(ctx.getString(R.string.ai_manager_empty))
+        return
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            ctx.getString(R.string.ai_manager_title, session.prompts.size),
+            fontSize = 10.sp,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            ctx.getString(R.string.ai_manager_clear),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = scheme.error,
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .clickable { session.clearPrompts() }
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+        )
+    }
+    Spacer(Modifier.height(4.dp))
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(max = 150.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        session.prompts.forEach { item ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(scheme.surfaceVariant.copy(alpha = .4f))
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    item,
+                    fontSize = 10.sp,
+                    maxLines = 2,
+                    color = scheme.onSurface,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { session.prompt = item },
+                )
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    Modifier
+                        .size(22.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { session.deletePrompt(item) },
+                    contentAlignment = Alignment.Center,
+                ) { FloatIcons.Trash(tint = scheme.error, modifier = Modifier.size(14.dp)) }
+            }
         }
     }
 }
@@ -551,6 +648,7 @@ private fun RowScope.ToolSlot(
         Tool.MIRROR -> ctx.getString(R.string.tool_mirror)
         Tool.ROTATE -> ctx.getString(R.string.tool_rotate)
         Tool.AI -> ctx.getString(R.string.tool_ai)
+        Tool.PROMPTS -> ctx.getString(R.string.tool_prompts)
         Tool.HISTORY -> ctx.getString(R.string.history_short)
         Tool.RESET -> ctx.getString(R.string.action_reset_all)
         Tool.NONE -> ""
@@ -567,6 +665,7 @@ private fun RowScope.ToolSlot(
             Tool.MIRROR -> FloatIcons.MirrorH(tint = tint)
             Tool.ROTATE -> FloatIcons.RotateTool(tint = tint)
             Tool.AI -> FloatIcons.Sparkle(tint = tint)
+            Tool.PROMPTS -> FloatIcons.List(tint = tint)
             Tool.HISTORY -> FloatIcons.History(tint = tint)
             Tool.RESET -> FloatIcons.ResetAll(tint = tint)
             Tool.NONE -> Unit
@@ -580,7 +679,7 @@ private fun ToolRow(active: Tool, onTool: (Tool) -> Unit) {
     // surface + label-free icon) makes the row read as a real toolbar.
     val order = listOf(
         Tool.RATIO, Tool.CROP, Tool.FRAME, Tool.BACKGROUND, Tool.TEXT,
-        Tool.MIRROR, Tool.ROTATE, Tool.AI, Tool.HISTORY, Tool.RESET,
+        Tool.MIRROR, Tool.ROTATE, Tool.AI, Tool.PROMPTS, Tool.HISTORY, Tool.RESET,
     )
     Row(
         Modifier
@@ -817,48 +916,50 @@ private fun ErrorState(message: String) {
 }
 
 @Composable
-private fun EmptyState(onPick: () -> Unit) {
+private fun EmptyState(onPick: () -> Unit, onClear: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(24.dp),
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            FloatIcons.Gallery(tint = scheme.primary, modifier = Modifier.size(34.dp))
-            Spacer(Modifier.height(10.dp))
-            Text(
-                ctx.getString(R.string.empty_title),
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                color = scheme.onSurface,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                ctx.getString(R.string.empty_body),
-                fontSize = 11.sp,
-                lineHeight = 15.sp,
-                color = scheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(
+            // add a picture from the gallery
+            Box(
                 Modifier
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(scheme.primary)
-                    .clickable(onClick = onPick)
-                    .padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .size(58.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(scheme.primary.copy(alpha = .16f))
+                    .border(1.5.dp, scheme.primary.copy(alpha = .65f), RoundedCornerShape(18.dp))
+                    .semantics { contentDescription = ctx.getString(R.string.empty_add) }
+                    .clickable(onClick = onPick),
+                contentAlignment = Alignment.Center,
             ) {
-                Text(ctx.getString(R.string.pick_image), color = scheme.onPrimary, fontSize = 12.sp)
+                androidx.compose.foundation.Canvas(Modifier.size(22.dp)) {
+                    val c = scheme.primary
+                    val w = size.width
+                    val h = size.height
+                    val t = 2.dp.toPx()
+                    drawLine(c, androidx.compose.ui.geometry.Offset(w / 2, 0f), androidx.compose.ui.geometry.Offset(w / 2, h), t, androidx.compose.ui.graphics.StrokeCap.Round)
+                    drawLine(c, androidx.compose.ui.geometry.Offset(0f, h / 2), androidx.compose.ui.geometry.Offset(w, h / 2), t, androidx.compose.ui.graphics.StrokeCap.Round)
+                }
+            }
+            // empty the preview: same slot, so the layout is symmetric
+            Box(
+                Modifier
+                    .size(58.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(scheme.surfaceVariant.copy(alpha = .55f))
+                    .border(1.5.dp, scheme.outline.copy(alpha = .45f), RoundedCornerShape(18.dp))
+                    .semantics { contentDescription = ctx.getString(R.string.empty_clear) }
+                    .clickable(onClick = onClear),
+                contentAlignment = Alignment.Center,
+            ) {
+                FloatIcons.Trash(tint = scheme.onSurfaceVariant.copy(alpha = .45f))
             }
         }
     }
 }
-
-// ---------------------------------------------------------------------------------------
-// Tool panels
-// ---------------------------------------------------------------------------------------
 
 @Composable
 private fun OverlayPanel(
@@ -1069,11 +1170,13 @@ private fun OverlayPanel(
 
             Tool.AI -> AiPanel(
                 session = aiSession,
-                base = aiBase(),
+                base = bitmap,
                 baseFile = aiBaseFile(),
                 onApply = onAiApply,
                 onInfo = onInfo,
             )
+
+            Tool.PROMPTS -> PromptsPanel(aiSession)
 
             Tool.RATIO -> {
                 SectionTitle(ctx.getString(R.string.panel_ratio_title))

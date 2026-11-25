@@ -429,6 +429,40 @@ object FloatIcons {
         }
     }
 
+    /** Three ruled lines with a bullet each: the prompt manager. */
+    @Composable
+    fun List(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(20.dp)) {
+            val s = size.minDimension / VIEW
+            listOf(5.5f, 12f, 18.5f).forEach { y ->
+                drawCircle(c, radius = 1.1f * s, center = Offset(4.6f * s, y * s))
+                line(8f, y, 19.5f, y, s, c, 1.7f)
+            }
+        }
+    }
+
+    /** Waste bin: clear the preview / remove a saved prompt. */
+    @Composable
+    fun Trash(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+        val c = if (tint == Color.Unspecified) Color(0xFF2A2F3A) else tint
+        Canvas(modifier.size(20.dp)) {
+            val s = size.minDimension / VIEW
+            // lid + handle
+            line(4.5f, 6f, 19.5f, 6f, s, c, 1.7f)
+            line(9.5f, 3.6f, 14.5f, 3.6f, s, c, 1.7f)
+            line(9.5f, 3.6f, 9.5f, 6f, s, c, 1.7f)
+            line(14.5f, 3.6f, 14.5f, 6f, s, c, 1.7f)
+            // body
+            line(6.3f, 6f, 7.3f, 20.4f, s, c, 1.7f)
+            line(17.7f, 6f, 16.7f, 20.4f, s, c, 1.7f)
+            line(7.3f, 20.4f, 16.7f, 20.4f, s, c, 1.7f)
+            // two ribs
+            line(10.2f, 9.5f, 10.6f, 17f, s, c.copy(alpha = .65f), 1.4f)
+            line(13.8f, 9.5f, 13.4f, 17f, s, c.copy(alpha = .65f), 1.4f)
+        }
+    }
+
     /** Four-point sparkle: the "AI" tool. */
     @Composable
     fun Sparkle(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {

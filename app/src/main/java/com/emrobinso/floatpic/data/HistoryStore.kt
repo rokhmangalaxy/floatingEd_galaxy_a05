@@ -39,14 +39,14 @@ data class HistoryEntry(
 data class HistoryFiles(val entry: HistoryEntry, val source: File, val thumb: File)
 
 /**
- * Last N (20) edits, kept on disk so they can be re-edited later.
+ * Last N (50) edits, kept on disk so they can be re-edited later.
  *
  * Recording is explicit — save, share, minimize or leaving the editor with real edits —
  * never silent uploads, so the list matches "what I actually made".
  */
 object HistoryStore {
 
-    const val MAX = 20
+    const val MAX = 50
     private const val SOURCE_NAME = "source.jpg"
     private const val THUMB_NAME = "thumb.jpg"
 

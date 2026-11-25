@@ -441,6 +441,11 @@ class EditorActivity : ComponentActivity() {
                             onInfo = { msg ->
                                 Toast.makeText(this@EditorActivity, msg, Toast.LENGTH_SHORT).show()
                             },
+                            onClearImage = {
+                                vm.clearSession()
+                                currentSessionId = null
+                                onHistoryIndexReset()
+                            },
                             onPickImage = {
                                 runCatching {
                                     pickImage.launch(
@@ -535,21 +540,9 @@ class EditorActivity : ComponentActivity() {
         } else if (action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE) {
             Toast.makeText(this, R.string.no_image, Toast.LENGTH_SHORT).show()
         } else {
-            // cold start from the launcher: the bundled sample keeps the editor explorable.
-            // If the asset is missing or undecodable we fall back to a generated placeholder
-            // rather than leaving the user with an empty editor and no explanation.
-            vm.loadImage {
-                val bmp = runCatching {
-                    assets.open("sample_photo.jpg").use {
-                        android.graphics.BitmapFactory.decodeStream(it)
-                    }
-                }.getOrNull() ?: runCatching {
-                    android.graphics.Bitmap.createBitmap(1080, 1080, android.graphics.Bitmap.Config.ARGB_8888)
-                        .apply { eraseColor(0xFF2A0B12.toInt()) }
-                }.getOrNull()
-                if (bmp == null) error("gambar awal tidak bisa dibuka")
-                com.emrobinso.floatpic.core.image.LoadedImage(bmp, 0, null)
-            }
+            // Cold start from the launcher: an EMPTY preview. The user adds a picture with
+            // the "+" shortcut (or by sharing one in). The bundled sample used to appear here
+            // and then sneak into history, which the user explicitly did not want.
         }
     }
 
