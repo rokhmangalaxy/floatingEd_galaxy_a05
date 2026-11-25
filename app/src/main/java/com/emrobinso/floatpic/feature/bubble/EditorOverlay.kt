@@ -242,11 +242,16 @@ class EditorOverlay(
                     onPreview = session.vm::previewTransform,
                     onCommit = session.vm::commitTransform,
                     onDrag = { dx, dy ->
-                        val dm = context.resources.displayMetrics
-                        val maxX = ((dm.widthPixels - cardWidthPx) / 2f).coerceAtLeast(0f)
-                        val maxY = ((dm.heightPixels - cardHeightPx) / 2f).coerceAtLeast(0f)
-                        cardX = (cardX + dx).coerceIn(-maxX, maxX)
-                        cardY = (cardY + dy).coerceIn(-maxY, maxY)
+                        cardX += dx
+                        cardY += dy
+                        clampOffsets()
+                        rememberOffset()
+                        applyLayout()
+                    },
+                    onResetPosition = {
+                        cardX = 0f
+                        cardY = 0f
+                        rememberOffset()
                         applyLayout()
                     },
                     onSave = { session.saveToGallery() },
