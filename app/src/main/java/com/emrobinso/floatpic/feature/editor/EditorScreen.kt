@@ -193,6 +193,7 @@ fun EditorScreen(
     var tool by remember { mutableStateOf(Tool.NONE) }
     var guides by remember { mutableStateOf(false) }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val ctx = LocalContext.current
     val extra = LocalExtra.current
     val scheme = MaterialTheme.colorScheme
     val radius = extra.cardRadius.dp
