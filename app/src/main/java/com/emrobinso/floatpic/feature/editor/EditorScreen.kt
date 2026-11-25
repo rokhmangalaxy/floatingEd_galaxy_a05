@@ -419,8 +419,8 @@ fun EditorScreen(
                                 )
                             }
                             // last ratio: the shortcut the user asked for, one tap back
-                            val previous = lastAspect
-                            if (previous != null) {
+                            if (lastAspect != null) {
+                                val previous = lastAspect
                                 PreviewShortcut(
                                     description = ctx.getString(R.string.preview_ratio_last),
                                     onTap = { onRestoreAspect() },
@@ -498,6 +498,8 @@ fun EditorScreen(
                                 guidesOn = guides,
                                 onGuides = { guides = !guides },
                                 onAspect = onAspect,
+                                onRestoreAspect = onRestoreAspect,
+                                lastAspect = lastAspect,
                                 onReset = onReset,
                                 onAlign = onAlign,
                                 onPadding = onPadding,
