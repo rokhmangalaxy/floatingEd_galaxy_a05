@@ -257,6 +257,7 @@ class EditorOverlay(
                     onFlipH = session.vm::flipHorizontal,
                     onFlipV = session.vm::flipVertical,
                     onText = session.vm::setText,
+                    onTextClear = { session.vm.setText("") },
                     onTextStyle = session.vm::setTextStyle,
                     onTextSize = session.vm::setTextSize,
                     onTextAnchor = session.vm::setTextAnchor,

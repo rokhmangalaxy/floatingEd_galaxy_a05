@@ -173,6 +173,8 @@ fun EditorScreen(
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
     onText: (String) -> Unit,
+    /** removes the caption from the picture (the clear-text shortcut) */
+    onTextClear: () -> Unit = {},
     onTextStyle: (TextStylePreset) -> Unit,
     onTextSize: (Float) -> Unit,
     onTextAnchor: (TextAnchor) -> Unit,
@@ -382,7 +384,7 @@ fun EditorScreen(
                             if (state.text.isVisible) {
                                 PreviewShortcut(
                                     description = ctx.getString(R.string.preview_text_clear),
-                                    onTap = { onText("") },
+                                    onTap = { onTextClear() },
                                     glyph = {
                                         val errorColor = MaterialTheme.colorScheme.error
                                         Box(
