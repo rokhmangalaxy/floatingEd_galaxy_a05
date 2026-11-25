@@ -310,7 +310,9 @@ fun EditorScreen(
                                 .align(Alignment.TopEnd)
                                 .padding(4.dp),
                             horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            // 3 dp, not 4: the strip must fit between the top edge and the
+                            // history chevrons, which sit at the vertical centre
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
                         ) {
                             if (aiSession.prompt.isNotBlank()) {
                                 // ONE control: the spark and the per-IP counter share a single
@@ -379,7 +381,7 @@ fun EditorScreen(
                                         val errorColor = MaterialTheme.colorScheme.error
                                         Box(
                                             Modifier
-                                                .size(26.dp)
+                                                .size(24.dp)
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
                                             contentAlignment = Alignment.Center,
@@ -392,7 +394,7 @@ fun EditorScreen(
                                             )
                                             Box(
                                                 Modifier
-                                                    .size(26.dp),
+                                                    .size(24.dp),
                                                 contentAlignment = Alignment.Center,
                                             ) {
                                                 androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
@@ -424,7 +426,7 @@ fun EditorScreen(
                                     glyph = {
                                         Box(
                                             Modifier
-                                                .size(26.dp)
+                                                .size(24.dp)
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(
                                                     if (onStory) MaterialTheme.colorScheme.primary
@@ -445,7 +447,7 @@ fun EditorScreen(
                             }
                             Box(
                                 Modifier
-                                    .size(26.dp)
+                                    .size(24.dp)
                                     .clip(RoundedCornerShape(9.dp))
                                     .background(MaterialTheme.colorScheme.surface.copy(alpha = .72f))
                                     .clickable(onClick = onClearImage),
@@ -461,14 +463,22 @@ fun EditorScreen(
 
                     if (history.isNotEmpty() && bitmap != null) {
                         val idx = historyCurrent.coerceIn(0, history.lastIndex)
-                        Box(Modifier.align(Alignment.CenterStart)) {
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(bottom = 2.dp),
+                        ) {
                             HistoryArrow(
                                 direction = -1,
                                 enabled = idx < history.lastIndex,
                                 onClick = { onStepHistory(history[idx + 1]) },
                             )
                         }
-                        Box(Modifier.align(Alignment.CenterEnd)) {
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(bottom = 2.dp),
+                        ) {
                             HistoryArrow(
                                 direction = 1,
                                 enabled = idx > 0,
@@ -768,7 +778,7 @@ private fun PreviewShortcut(
     PreviewShortcut(description = description, onTap = onTap) {
         Box(
             Modifier
-                .size(26.dp)
+                .size(24.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
             contentAlignment = Alignment.Center,
@@ -814,7 +824,7 @@ private fun HistoryArrow(direction: Int, enabled: Boolean, onClick: () -> Unit) 
     Box(
         Modifier
             .padding(horizontal = 2.dp)
-            .size(width = 24.dp, height = 40.dp)
+            .size(width = 24.dp, height = 34.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(scheme.surface.copy(alpha = if (enabled) .72f else .28f))
             .clickable(enabled = enabled, onClick = onClick),
