@@ -144,10 +144,6 @@ fun EditorScreen(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onAspect: (AspectPreset) -> Unit,
-    /** back to the ratio used before the current one */
-    onRestoreAspect: () -> Unit,
-    /** the ratio used before the current one, null when there is nothing to go back to */
-    lastAspect: AspectPreset?,
     onPreview: (Transform) -> Unit,
     onCommit: (Transform) -> Unit,
     onSave: () -> Unit,
@@ -316,40 +312,34 @@ fun EditorScreen(
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            if (aiSession.prompt.isNotBlank() && !aiSession.busy) {
-                                // generate straight from the preview. No word on the button:
-                                // the spark says it, and the counter underneath says the rest.
-                                Box(
+                            if (aiSession.prompt.isNotBlank()) {
+                                // ONE control: the spark and the per-IP counter share a single
+                                // chip, so tapping either runs the same generation
+                                Row(
                                     Modifier
-                                        .size(26.dp)
+                                        .height(24.dp)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.primary)
-                                        .clickable {
+                                        .background(
+                                            if (aiSession.busy) MaterialTheme.colorScheme.primary.copy(alpha = .55f)
+                                            else MaterialTheme.colorScheme.primary,
+                                        )
+                                        .clickable(enabled = !aiSession.busy) {
                                             aiSession.run(bitmap, null, onAiApply, onInfo)
-                                        },
-                                    contentAlignment = Alignment.Center,
+                                        }
+                                        .padding(horizontal = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     FloatIcons.Sparkle(
                                         tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(13.dp),
+                                        modifier = Modifier.size(11.dp),
                                     )
-                                }
-                                // per-IP counter: used / allowance, always visible
-                                Text(
-                                    "${aiSession.quota.used}/${AiQuota.LIMIT}",
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = .8f))
-                                        .padding(horizontal = 5.dp, vertical = 1.dp),
-                                )
-                                if (aiSession.busy) {
+                                    Spacer(Modifier.width(3.dp))
                                     Text(
-                                        "${aiSession.elapsed}s",
+                                        if (aiSession.busy) "${aiSession.elapsed}s"
+                                        else "${aiSession.quota.used}/${AiQuota.LIMIT}",
                                         fontSize = 8.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onPrimary,
                                     )
                                 }
                             }
@@ -418,25 +408,36 @@ fun EditorScreen(
                                     },
                                 )
                             }
-                            // last ratio: the shortcut the user asked for, one tap back
-                            if (lastAspect != null) {
-                                val previous = lastAspect
+                            // 9:16 toggle: one tap goes to the story ratio, the next tap
+                            // returns to the ratio the picture was opened with. No history.
+                            run {
+                                val onStory = state.aspect == AspectPreset.STORY_9_16
                                 PreviewShortcut(
-                                    description = ctx.getString(R.string.preview_ratio_last),
-                                    onTap = { onRestoreAspect() },
+                                    description = ctx.getString(R.string.preview_ratio_toggle),
+                                    onTap = {
+                                        haptics.tick()
+                                        onAspect(
+                                            if (onStory) AspectPreset.ORIGINAL
+                                            else AspectPreset.STORY_9_16,
+                                        )
+                                    },
                                     glyph = {
                                         Box(
                                             Modifier
                                                 .size(26.dp)
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
+                                                .background(
+                                                    if (onStory) MaterialTheme.colorScheme.primary
+                                                    else MaterialTheme.colorScheme.surface.copy(alpha = .78f),
+                                                ),
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             Text(
-                                                previous.chipLabel(),
+                                                "9:16",
                                                 fontSize = 8.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (onStory) MaterialTheme.colorScheme.onPrimary
+                                                else MaterialTheme.colorScheme.onSurface,
                                             )
                                         }
                                     },
@@ -498,8 +499,6 @@ fun EditorScreen(
                                 guidesOn = guides,
                                 onGuides = { guides = !guides },
                                 onAspect = onAspect,
-                                onRestoreAspect = onRestoreAspect,
-                                lastAspect = lastAspect,
                                 onReset = onReset,
                                 onAlign = onAlign,
                                 onPadding = onPadding,
@@ -1313,8 +1312,6 @@ private fun OverlayPanel(
     guidesOn: Boolean,
     onGuides: () -> Unit,
     onAspect: (AspectPreset) -> Unit,
-    onRestoreAspect: () -> Unit,
-    lastAspect: AspectPreset?,
     onOpenHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     onDeleteHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     thumbPath: (com.emrobinso.floatpic.data.HistoryEntry) -> String,

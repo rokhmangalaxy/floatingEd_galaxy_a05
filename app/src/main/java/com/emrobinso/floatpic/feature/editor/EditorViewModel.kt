@@ -38,8 +38,6 @@ data class UiState(
     val dirty: Boolean = false,
     /** an AI run swapped the picture, so there is always something worth keeping */
     val sourceReplaced: Boolean = false,
-    /** the ratio used before the current one; null when there is nothing to go back to */
-    val lastAspect: com.emrobinso.floatpic.core.model.AspectPreset? = null,
 )
 
 class EditorViewModel : ViewModel() {
@@ -116,7 +114,6 @@ class EditorViewModel : ViewModel() {
                             canRedo = false,
                             dirty = false,
                             sourceReplaced = false,
-                            lastAspect = null,
                         )
                     }
                 }
@@ -244,19 +241,7 @@ class EditorViewModel : ViewModel() {
      * px would otherwise point outside a narrower frame.
      */
     fun setAspect(preset: AspectPreset) = mutate {
-        if (it.aspect == preset) {
-            it
-        } else {
-            _ui.value = _ui.value.copy(lastAspect = it.aspect)
-            it.copy(aspect = preset, transform = Transform())
-        }
-    }
-
-    /** Back to the ratio used before this one (a one-tap undo for the crop menu). */
-    fun restoreLastAspect() {
-        val previous = _ui.value.lastAspect ?: return
-        mutate { it.copy(aspect = previous) }
-        _ui.value = _ui.value.copy(lastAspect = null)
+        if (it.aspect == preset) it else it.copy(aspect = preset, transform = Transform())
     }
 
     /** Reset pan/zoom/rotation but keep background, padding and text (docs/04). */
