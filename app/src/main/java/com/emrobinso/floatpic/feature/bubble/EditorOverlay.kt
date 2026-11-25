@@ -215,6 +215,8 @@ class EditorOverlay(
                     onUndo = session.vm::undo,
                     onRedo = session.vm::redo,
                     onAspect = session.vm::setAspect,
+                    onRestoreAspect = session.vm::restoreLastAspect,
+                    lastAspect = ui.lastAspect,
                     onPreview = session.vm::previewTransform,
                     onCommit = session.vm::commitTransform,
                     onDrag = { dx, dy ->

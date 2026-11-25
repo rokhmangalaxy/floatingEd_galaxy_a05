@@ -210,6 +210,8 @@ class BubbleService : Service() {
     }
 
     private fun openGallery() {
+        // step aside before the picker opens: an overlay on top of the gallery is in the way
+        hideEditor()
         runCatching {
             val intent = Intent(this, com.emrobinso.floatpic.feature.editor.EditorHostActivity::class.java)
                 .setAction(com.emrobinso.floatpic.feature.editor.EditorHostActivity.ACTION_PICK)

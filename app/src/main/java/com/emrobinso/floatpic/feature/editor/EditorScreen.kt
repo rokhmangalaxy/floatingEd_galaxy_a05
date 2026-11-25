@@ -144,6 +144,10 @@ fun EditorScreen(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onAspect: (AspectPreset) -> Unit,
+    /** back to the ratio used before the current one */
+    onRestoreAspect: () -> Unit,
+    /** the ratio used before the current one, null when there is nothing to go back to */
+    lastAspect: AspectPreset?,
     onPreview: (Transform) -> Unit,
     onCommit: (Transform) -> Unit,
     onSave: () -> Unit,
@@ -300,73 +304,58 @@ fun EditorScreen(
                     }
 
                     // ---- preview shortcuts ----------------------------------------------
-                    // A single row on top of the picture: generate (only while a prompt is
-                    // typed), the per-IP counter, clipboard captions above/below, and the
-                    // trash that empties the preview. Drawn over the image, nothing shifts.
+                    // A vertical strip on the right edge of the picture. Vertical on purpose:
+                    // a horizontal row ate the width of the preview on small screens.
                     if (bitmap != null) {
-                        Row(
+                        Column(
                             Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(4.dp)
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                                .padding(4.dp),
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             if (aiSession.prompt.isNotBlank() && !aiSession.busy) {
-                                // generate straight from the preview; the label carries the
-                                // per-IP counter so the allowance is always in sight
-                                Row(
+                                // generate straight from the preview. No word on the button:
+                                // the spark says it, and the counter underneath says the rest.
+                                Box(
                                     Modifier
-                                        .height(26.dp)
+                                        .size(26.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(MaterialTheme.colorScheme.primary)
                                         .clickable {
-                                            aiSession.run(
-                                                bitmap,
-                                                null,
-                                                onAiApply,
-                                                onInfo,
-                                            )
-                                        }
-                                        .padding(horizontal = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
+                                            aiSession.run(bitmap, null, onAiApply, onInfo)
+                                        },
+                                    contentAlignment = Alignment.Center,
                                 ) {
                                     FloatIcons.Sparkle(
                                         tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(12.dp),
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        ctx.getString(
-                                            R.string.preview_generate,
-                                            aiSession.quota.used,
-                                            AiQuota.LIMIT,
-                                        ),
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(13.dp),
                                     )
                                 }
-                            }
-                            if (aiSession.prompt.isNotBlank() && aiSession.busy) {
+                                // per-IP counter: used / allowance, always visible
                                 Text(
-                                    ctx.getString(
-                                        R.string.preview_generate_busy,
-                                        aiSession.elapsed,
-                                    ),
-                                    fontSize = 9.sp,
-                                    color = MaterialTheme.colorScheme.primary,
+                                    "${aiSession.quota.used}/${AiQuota.LIMIT}",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onPrimary,
                                     modifier = Modifier
-                                        .height(24.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = .8f))
-                                        .padding(horizontal = 7.dp, vertical = 5.dp),
+                                        .clip(RoundedCornerShape(50))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = .8f))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp),
                                 )
+                                if (aiSession.busy) {
+                                    Text(
+                                        "${aiSession.elapsed}s",
+                                        fontSize = 8.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                             // caption from the clipboard, pinned above / below the picture
                             PreviewShortcut(
                                 description = ctx.getString(R.string.preview_text_top),
-                                onTap = {
+                                top = true,
+                            ) {
                                 val pasted = clipboard.getText()?.text?.trim()
                                 if (!pasted.isNullOrBlank()) {
                                     onText(pasted)
@@ -375,21 +364,11 @@ fun EditorScreen(
                                 } else {
                                     onInfo(ctx.getString(R.string.preview_clipboard_empty))
                                 }
-                                },
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(width = 28.dp, height = 26.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    EdgeGlyph(top = true)
-                                }
                             }
                             PreviewShortcut(
                                 description = ctx.getString(R.string.preview_text_bottom),
-                                onTap = {
+                                top = false,
+                            ) {
                                 val pasted = clipboard.getText()?.text?.trim()
                                 if (!pasted.isNullOrBlank()) {
                                     onText(pasted)
@@ -398,17 +377,67 @@ fun EditorScreen(
                                 } else {
                                     onInfo(ctx.getString(R.string.preview_clipboard_empty))
                                 }
-                                },
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(width = 28.dp, height = 26.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    EdgeGlyph(top = false)
-                                }
+                            }
+                            // clear the caption that is on the picture right now
+                            if (state.text.isVisible) {
+                                PreviewShortcut(
+                                    description = ctx.getString(R.string.preview_text_clear),
+                                    onTap = { onText("") },
+                                    glyph = {
+                                        Box(
+                                            Modifier
+                                                .size(26.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                "T",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.error,
+                                            )
+                                            Box(
+                                                Modifier
+                                                    .size(26.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+                                                    drawLine(
+                                                        color = MaterialTheme.colorScheme.error,
+                                                        start = androidx.compose.ui.geometry.Offset(2.dp.toPx(), size.height - 2.dp.toPx()),
+                                                        end = androidx.compose.ui.geometry.Offset(size.width - 2.dp.toPx(), 2.dp.toPx()),
+                                                        strokeWidth = 1.6.dp.toPx(),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                            // last ratio: the shortcut the user asked for, one tap back
+                            val previous = lastAspect
+                            if (previous != null) {
+                                PreviewShortcut(
+                                    description = ctx.getString(R.string.preview_ratio_last),
+                                    onTap = { onRestoreAspect() },
+                                    glyph = {
+                                        Box(
+                                            Modifier
+                                                .size(26.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                previous.chipLabel(),
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                            )
+                                        }
+                                    },
+                                )
                             }
                             Box(
                                 Modifier
@@ -723,6 +752,26 @@ private fun PreviewShortcut(
             .semantics { contentDescription = description }
             .clickable(onClick = onTap),
     ) { glyph() }
+}
+
+/** Clipboard caption shortcut: the built-in plate with a top / bottom edge glyph. */
+@Composable
+private fun PreviewShortcut(
+    description: String,
+    top: Boolean,
+    onTap: () -> Unit,
+) {
+    PreviewShortcut(description = description, onTap = onTap) {
+        Box(
+            Modifier
+                .size(26.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            EdgeGlyph(top = top)
+        }
+    }
 }
 
 /**
@@ -1259,6 +1308,8 @@ private fun OverlayPanel(
     guidesOn: Boolean,
     onGuides: () -> Unit,
     onAspect: (AspectPreset) -> Unit,
+    onRestoreAspect: () -> Unit,
+    lastAspect: AspectPreset?,
     onOpenHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     onDeleteHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
     thumbPath: (com.emrobinso.floatpic.data.HistoryEntry) -> String,
