@@ -23,7 +23,7 @@ object AiPromptStore {
 
     private val json = Json { ignoreUnknownKeys = true }
     private val listSerializer = ListSerializer(String.serializer())
-    private val intMap = MapSerializer(String.serializer(), kotlinx.serialization.builtins.Int.serializer())
+    private val intMap = MapSerializer(String.serializer(), Int.serializer())
 
     fun load(context: Context): List<String> = runCatching {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
@@ -70,10 +70,10 @@ object AiPromptStore {
     }
 
     // ---- stars -------------------------------------------------------------------
-    fun pinned(context: Context): List<String> = runCatching {
+    fun pinned(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_PINNED, null) ?: return emptyList()
-        json.decodeFromString(listSerializer, raw)
-    }.getOrDefault(emptyList())
+        return runCatching { json.decodeFromString(listSerializer, raw) }.getOrDefault(emptyList())
+    }
 
     fun setPinned(context: Context, text: String, on: Boolean) {
         val next = pinned(context).filter { it != text }.toMutableList()
@@ -84,10 +84,11 @@ object AiPromptStore {
     }
 
     // ---- use counters ------------------------------------------------------------
-    fun uses(context: Context): MutableMap<String, Int> = runCatching {
+    fun uses(context: Context): MutableMap<String, Int> {
         val raw = prefs(context).getString(KEY_USES, null) ?: return mutableMapOf()
-        json.decodeFromString(intMap, raw).toMutableMap()
-    }.getOrDefault(mutableMapOf())
+        return runCatching { json.decodeFromString(intMap, raw).toMutableMap() }
+            .getOrDefault(mutableMapOf())
+    }
 
     fun wrote(context: Context, text: String, count: Int) {
         val next = uses(context)
