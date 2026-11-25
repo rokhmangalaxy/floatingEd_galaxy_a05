@@ -191,4 +191,6 @@
     <string name="preview_text_top">Paste text at the top from the clipboard</string>
     <string name="preview_text_bottom">Paste text at the bottom from the clipboard</string>
     <string name="preview_clipboard_empty">Clipboard is empty — copy some text first.</string>
+    <string name="preview_text_clear">Remove the caption from the picture</string>
+    <string name="preview_ratio_last">Back to the previous ratio</string>
 </resources>

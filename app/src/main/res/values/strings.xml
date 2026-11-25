@@ -191,4 +191,6 @@
     <string name="preview_text_top">Tempel teks di atas tengah dari clipboard</string>
     <string name="preview_text_bottom">Tempel teks di bawah tengah dari clipboard</string>
     <string name="preview_clipboard_empty">Clipboard kosong — salin teks dulu.</string>
+    <string name="preview_text_clear">Hapus teks pada gambar</string>
+    <string name="preview_ratio_last">Kembali ke rasio sebelumnya</string>
 </resources>
