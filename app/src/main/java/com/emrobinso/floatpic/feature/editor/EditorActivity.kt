@@ -45,7 +45,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.onDispose as composeOnDispose
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -221,7 +220,7 @@ class EditorActivity : ComponentActivity() {
                     }
                 }
                 lifecycle.addObserver(observer)
-                composeOnDispose { lifecycle.removeObserver(observer) }
+                onDispose { lifecycle.removeObserver(observer) }
             }
             // floating card position: dragging the grabber moves the whole card.
             // IMPORTANT: kept as two plain Floats. androidx.compose.ui.geometry.Offset is
