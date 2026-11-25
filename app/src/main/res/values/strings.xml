@@ -193,4 +193,8 @@
     <string name="preview_clipboard_empty">Clipboard kosong — salin teks dulu.</string>
     <string name="preview_text_clear">Hapus teks pada gambar</string>
     <string name="preview_ratio_toggle">Ganti ke rasio 9:16, atau balik ke rasio asli</string>
+    <string name="preview_text_occupied">Gambar sudah punya teks sendiri — shortcut tidak menimpanya. Hapus dulu teksnya (%1$s).</string>
+    <string name="preview_text_top_short">atas</string>
+    <string name="preview_text_bottom_short">bawah</string>
+    <string name="action_reset_position">Reset posisi</string>
 </resources>

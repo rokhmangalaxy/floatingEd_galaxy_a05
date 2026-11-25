@@ -163,6 +163,8 @@ fun EditorScreen(
     onRotateCommit: (Float) -> Unit,
     onResetAll: () -> Unit,
     onResetEdits: () -> Unit,
+    /** puts the floating card back in the middle of the screen */
+    onResetPosition: () -> Unit,
     /** index of the entry currently open, -1 when the picture is not from history */
     historyCurrent: Int,
     onStepHistory: (com.emrobinso.floatpic.data.HistoryEntry) -> Unit,
@@ -350,27 +352,35 @@ fun EditorScreen(
                                 description = ctx.getString(R.string.preview_text_top),
                                 top = true,
                             ) {
-                                val pasted = clipboard.getText()?.text?.trim()
-                                if (!pasted.isNullOrBlank()) {
-                                    onText(pasted)
-                                    onTextStyle(TextStylePreset.WHITE_ON_BLACK)
-                                    onTextAnchor(TextAnchor.TOP_CENTER)
-                                } else {
-                                    onInfo(ctx.getString(R.string.preview_clipboard_empty))
-                                }
+                                pasteCaption(
+                                    clipboard = clipboard.getText()?.text?.trim(),
+                                    current = state.text.text,
+                                    atTop = true,
+                                    onApply = { caption, top ->
+                                        onText(caption)
+                                        onTextStyle(TextStylePreset.WHITE_ON_BLACK)
+                                        onTextAnchor(if (top) TextAnchor.TOP_CENTER else TextAnchor.BOTTOM_CENTER)
+                                    },
+                                    onInfo = onInfo,
+                                    ctx = ctx,
+                                )
                             }
                             PreviewShortcut(
                                 description = ctx.getString(R.string.preview_text_bottom),
                                 top = false,
                             ) {
-                                val pasted = clipboard.getText()?.text?.trim()
-                                if (!pasted.isNullOrBlank()) {
-                                    onText(pasted)
-                                    onTextStyle(TextStylePreset.WHITE_ON_BLACK)
-                                    onTextAnchor(TextAnchor.BOTTOM_CENTER)
-                                } else {
-                                    onInfo(ctx.getString(R.string.preview_clipboard_empty))
-                                }
+                                pasteCaption(
+                                    clipboard = clipboard.getText()?.text?.trim(),
+                                    current = state.text.text,
+                                    atTop = false,
+                                    onApply = { caption, top ->
+                                        onText(caption)
+                                        onTextStyle(TextStylePreset.WHITE_ON_BLACK)
+                                        onTextAnchor(if (top) TextAnchor.TOP_CENTER else TextAnchor.BOTTOM_CENTER)
+                                    },
+                                    onInfo = onInfo,
+                                    ctx = ctx,
+                                )
                             }
                             // clear the caption that is on the picture right now
                             if (state.text.isVisible) {
@@ -463,6 +473,19 @@ fun EditorScreen(
 
                     if (history.isNotEmpty() && bitmap != null) {
                         val idx = historyCurrent.coerceIn(0, history.lastIndex)
+                        // which picture, of how many: the chevrons alone never said that
+                        Text(
+                            "${idx + 1}/${history.size}",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 8.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = .72f))
+                                .padding(horizontal = 5.dp, vertical = 1.dp),
+                        )
                         Box(
                             Modifier
                                 .align(Alignment.BottomStart)
@@ -532,6 +555,7 @@ fun EditorScreen(
                                 onAiApply = onAiApply,
                                 onInfo = onInfo,
                                 onResetEdits = onResetEdits,
+                                onResetPosition = onResetPosition,
                                 onDone = { tool = Tool.NONE },
                                 onOpenHistory = onOpenHistory,
                                 onDeleteHistory = onDeleteHistory,
@@ -752,6 +776,36 @@ private fun PromptAction(label: String, color: androidx.compose.ui.graphics.Colo
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 3.dp),
     )
+}
+
+/**
+ * The caption shortcut may only WRITE when the picture has no caption yet, or when the
+ * caption is already exactly the clipboard text (a re-tap). Any other text belongs to the
+ * user and is never replaced behind their back.
+ */
+private fun pasteCaption(
+    clipboard: String?,
+    current: String,
+    atTop: Boolean,
+    onApply: (caption: String, top: Boolean) -> Unit,
+    onInfo: (String) -> Unit,
+    ctx: android.content.Context,
+) {
+    if (clipboard.isNullOrBlank()) {
+        onInfo(ctx.getString(R.string.preview_clipboard_empty))
+        return
+    }
+    val occupied = current.isNotBlank() && current.trim() != clipboard.trim()
+    if (occupied) {
+        onInfo(
+            ctx.getString(
+                R.string.preview_text_occupied,
+                ctx.getString(if (atTop) R.string.preview_text_top_short else R.string.preview_text_bottom_short),
+            ),
+        )
+        return
+    }
+    onApply(clipboard, atTop)
 }
 
 /** Small preview shortcut: a glyph plus an accessibility description. */
@@ -1337,6 +1391,7 @@ private fun OverlayPanel(
     onRotateCommit: (Float) -> Unit,
     onResetAll: () -> Unit,
     onResetEdits: () -> Unit,
+    onResetPosition: () -> Unit,
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
     onText: (String) -> Unit,
@@ -1515,6 +1570,14 @@ private fun OverlayPanel(
                     }
                     // 2. back to the original picture, edits included
                     PillToggle(ctx.getString(R.string.action_reset_all), false, onResetAll)
+                }
+                Spacer(Modifier.height(7.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // 3. the card itself: back to the middle of the screen
+                    PillToggle(ctx.getString(R.string.action_reset_position), false, onResetPosition)
                     PillToggle("Grid", guidesOn, onGuides)
                 }
             }

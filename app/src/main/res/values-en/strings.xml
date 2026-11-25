@@ -193,4 +193,8 @@
     <string name="preview_clipboard_empty">Clipboard is empty — copy some text first.</string>
     <string name="preview_text_clear">Remove the caption from the picture</string>
     <string name="preview_ratio_toggle">Switch to the 9:16 ratio, or back to the original</string>
+    <string name="preview_text_occupied">The picture already has its own caption — the shortcut will not overwrite it. Clear it first (%1$s).</string>
+    <string name="preview_text_top_short">top</string>
+    <string name="preview_text_bottom_short">bottom</string>
+    <string name="action_reset_position">Reset position</string>
 </resources>

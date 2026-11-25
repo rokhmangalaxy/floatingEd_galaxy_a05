@@ -94,6 +94,9 @@ class OverlayComposeView(context: Context) :
  * and tap it while the editor floats on top, and the card reaches the very edges of the
  * screen because the window travels with it instead of being pinned to the middle.
  */
+private const val KEY_X = "card_x"
+private const val KEY_Y = "card_y"
+
 class EditorOverlay(
     private val context: Context,
     private val session: EditorSessionState,
@@ -138,6 +141,14 @@ class EditorOverlay(
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
         params = p
+        // the card stays where it was last dragged; the window IS the card, so restoring the
+        // offset also places the window
+        val prefs = context.getSharedPreferences("floatpic_editor", Context.MODE_PRIVATE)
+        cardX = prefs.getFloat(KEY_X, 0f)
+        cardY = prefs.getFloat(KEY_Y, 0f)
+        clampOffsets()
+        p.x = ((dm.widthPixels - cardWidthPx) / 2 + cardX).toInt()
+        p.y = ((dm.heightPixels - cardHeightPx) / 2 + cardY).toInt()
         val compose = OverlayComposeView(context)
         compose.content = { EditorOverlayContent() }
         view = compose
@@ -151,6 +162,19 @@ class EditorOverlay(
         view = null
         runCatching { windowManager.removeView(v) }
         v.dispose()
+    }
+
+    private fun clampOffsets() {
+        val dm = context.resources.displayMetrics
+        val maxX = ((dm.widthPixels - cardWidthPx) / 2f).coerceAtLeast(0f)
+        val maxY = ((dm.heightPixels - cardHeightPx) / 2f).coerceAtLeast(0f)
+        cardX = cardX.coerceIn(-maxX, maxX)
+        cardY = cardY.coerceIn(-maxY, maxY)
+    }
+
+    private fun rememberOffset() {
+        context.getSharedPreferences("floatpic_editor", Context.MODE_PRIVATE)
+            .edit().putFloat(KEY_X, cardX).putFloat(KEY_Y, cardY).apply()
     }
 
     /**
