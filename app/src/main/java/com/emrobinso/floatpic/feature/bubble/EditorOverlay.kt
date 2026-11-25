@@ -64,6 +64,7 @@ class OverlayComposeView(context: Context) :
     /** set before the view is added to a window */
     var content: (@Composable () -> Unit)? = null
 
+    @Composable
     override fun Content() {
         content?.invoke()
     }
