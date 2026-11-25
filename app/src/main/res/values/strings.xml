@@ -76,7 +76,7 @@
     <string name="bubble_notif_title">FloatPic mengambang</string>
     <string name="bubble_notif_text">Ketuk untuk lanjut mengedit</string>
     <string name="bubble_notif_close">Tutup</string>
-    <string name="bubble_permission_title">IzinkanFloat di atas aplikasi lain?</string>
+    <string name="bubble_permission_title">Izinkan Float di atas aplikasi lain?</string>
     <string name="bubble_permission_body">Agar sesi edit bisa disimpan sebagai bubble kecil, FloatPic perlu izin tampil di atas aplikasi lain.</string>
     <string name="bubble_permission_grant">Beri izin</string>
     <string name="bubble_permission_later">Nanti</string>
@@ -171,4 +171,19 @@
     <string name="sheet_bubble_start">Mulai</string>
     <string name="sheet_bubble_stop">Hentikan</string>
     <string name="sheet_dismiss">Nanti saja</string>
+    <string name="home_tagline">Editor gambar melayang. Aktifkan bubble sekali, lalu tinggal ketuk bubble untuk membuka editor.</string>
+    <string name="home_step_permission">Izin tampil di atas aplikasi lain</string>
+    <string name="home_permission_on">Sudah diizinkan — bubble bisa ditampilkan.</string>
+    <string name="home_permission_off">Wajib untuk bubble. Tanpa izin ini bubble tidak akan muncul.</string>
+    <string name="home_grant">Beri izin</string>
+    <string name="home_done">Selesai</string>
+    <string name="home_step_bubble">Bubble</string>
+    <string name="home_bubble_on">Bubble aktif. Ketuk untuk buka editor, tahan 1,6 detik untuk menutup.</string>
+    <string name="home_bubble_off">Belum aktif. Nyalakan setelah izin diberikan.</string>
+    <string name="home_start">Nyalakan</string>
+    <string name="home_stop">Matikan</string>
+    <string name="home_step_editor">Editor</string>
+    <string name="home_editor_body">Bisa juga langsung membuka editor tanpa bubble.</string>
+    <string name="home_open">Buka</string>
+    <string name="home_footer">Petunjuk: bubble tetap melayang saat Anda membuka aplikasi lain. Ketuk bubble untuk menampilkan atau menyembunyikan editor.</string>
 </resources>

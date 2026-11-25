@@ -171,4 +171,19 @@
     <string name="sheet_bubble_start">Start</string>
     <string name="sheet_bubble_stop">Stop</string>
     <string name="sheet_dismiss">Later</string>
+    <string name="home_tagline">A floating picture editor. Allow the bubble once, then tap it to open the editor.</string>
+    <string name="home_step_permission">Display over other apps</string>
+    <string name="home_permission_on">Allowed — the bubble can be shown.</string>
+    <string name="home_permission_off">Required for the bubble. Without it the bubble never appears.</string>
+    <string name="home_grant">Allow</string>
+    <string name="home_done">Done</string>
+    <string name="home_step_bubble">Bubble</string>
+    <string name="home_bubble_on">Bubble is on. Tap to open the editor, hold 1.6 s to end the session.</string>
+    <string name="home_bubble_off">Not running. Switch it on after the permission.</string>
+    <string name="home_start">Start</string>
+    <string name="home_stop">Stop</string>
+    <string name="home_step_editor">Editor</string>
+    <string name="home_editor_body">You can also open the editor directly, without the bubble.</string>
+    <string name="home_open">Open</string>
+    <string name="home_footer">Tip: the bubble keeps floating while you use other apps. Tap it to show or hide the editor.</string>
 </resources>

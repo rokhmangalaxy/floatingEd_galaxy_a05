@@ -9,51 +9,20 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.Toast
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.core.image.ImageLoader
 import com.emrobinso.floatpic.data.DraftStore
@@ -74,12 +43,19 @@ import kotlin.math.min
 class BubbleService : Service() {
 
     private lateinit var windowManager: WindowManager
-    private var view: ComposeView? = null
+    private var view: ImageView? = null
     private var params: WindowManager.LayoutParams? = null
     private var thumb: android.graphics.Bitmap? = null
     private var sessionId: String? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var idleJob: Job? = null
+    private var holdJob: Job? = null
+    private var holdProgress = 0f
+    private var downX = 0f
+    private var downY = 0f
+    private var lastX = 0f
+    private var lastY = 0f
+    private var dragging = false
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -174,7 +150,8 @@ class BubbleService : Service() {
             }.getOrNull()?.let { loaded ->
                 thumb?.recycle()
                 thumb = loaded.bitmap
-                view?.setContent { BubbleContentRoot() }
+                view?.setImageDrawable(BubbleDrawable(loaded.bitmap))
+                view?.invalidate()
             }
         }
     }
@@ -199,8 +176,18 @@ class BubbleService : Service() {
             Intent(this, BubbleCloseReceiver::class.java).setAction(ACTION_CLOSE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val notification: Notification = Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_gallery)
+        // Platform builder on purpose: Notification.Builder(context, channel) hides a
+        // `new Notification()` under the hood, and that constructor is exactly what throws
+        // on some OEM builds ("Failure saving state"). A broken notification must never be
+        // able to kill the service — the bubble is the whole feature.
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        val notification: Notification = builder
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(getString(R.string.bubble_notif_title))
             .setContentText(getString(R.string.bubble_notif_text))
             .setContentIntent(open)
@@ -212,7 +199,14 @@ class BubbleService : Service() {
             .setOngoing(true)
             .setShowWhen(false)
             .build()
-        startForeground(NOTIFICATION_ID, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID, notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun restoreIntent(): Intent {
@@ -222,6 +216,14 @@ class BubbleService : Service() {
         return ShareIntents.editorIntentForDraft(this, id)
     }
 
+    /**
+     * The bubble is a plain [android.widget.ImageView], NOT a ComposeView.
+     *
+     * A ComposeUIView inside a TYPE_APPLICATION_OVERLAY window needs a saved-state owner and
+     * a lifecycle owner that the window does not provide; the composition threw while the
+     * window was being attached and the process died the moment the bubble was switched on.
+     * A View has none of those requirements, so this path cannot crash for that reason.
+     */
     private fun showBubble() {
         if (view != null) return
         val dm = resources.displayMetrics
@@ -241,372 +243,187 @@ class BubbleService : Service() {
             y = dm.heightPixels / 2
         }
         params = p
-        val compose = ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            setContent { BubbleContentRoot() }
+        val image = ImageView(this).apply {
+            contentDescription = getString(R.string.bubble_notif_title)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageDrawable(BubbleDrawable(thumb))
+            setOnTouchListener { _, event -> handleTouch(event) }
         }
-        view = compose
-        // let the caller decide what to do when the overlay manager rejects the view
-        windowManager.addView(compose, p)
+        view = image
+        windowManager.addView(image, p)
+        scheduleIdle()
+    }
+
+    /** Drag to move, tap to bring the editor back, hold 1.6 s to close. */
+    private fun handleTouch(event: MotionEvent): Boolean {
+        val p = params ?: return false
+        val v = view ?: return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.rawX
+                downY = event.rawY
+                lastX = event.rawX
+                lastY = event.rawY
+                dragging = false
+                scheduleIdle()
+                startHold()
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = event.rawX - downX
+                val dy = event.rawY - downY
+                if (!dragging && (dx * dx + dy * dy) > dp(12) * dp(12)) {
+                    dragging = true
+                    cancelHold()
+                    v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                }
+                if (dragging) {
+                    val moveX = (event.rawX - lastX).toInt()
+                    val moveY = (event.rawY - lastY).toInt()
+                    val dm = resources.displayMetrics
+                    p.x = (p.x + moveX).coerceIn(-dp(10), dm.widthPixels - dp(20))
+                    p.y = (p.y + moveY).coerceIn(dp(24), dm.heightPixels - dp(120))
+                    lastX = event.rawX
+                    lastY = event.rawY
+                    runCatching { windowManager.updateViewLayout(v, p) }
+                    scheduleIdle()
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                cancelHold()
+                if (dragging) {
+                    snapToEdge()
+                } else if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    openEditor()
+                }
+                dragging = false
+                scheduleIdle()
+            }
+        }
+        return true
+    }
+
+    private fun startHold() {
+        holdJob?.cancel()
+        holdJob = scope.launch {
+            val started = System.currentTimeMillis()
+            while (true) {
+                val elapsed = System.currentTimeMillis() - started
+                holdProgress = (elapsed.toFloat() / HOLD_MS).coerceIn(0f, 1f)
+                view?.invalidate()
+                if (elapsed >= HOLD_MS) break
+                delay(32)
+            }
+            if (!dragging) {
+                view?.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                closeApp()
+            }
+        }
+    }
+
+    private fun cancelHoldProgress() {
+        holdProgress = 0f
+        view?.invalidate()
+    }
+
+    private fun cancelHold() {
+        holdJob?.cancel()
+        holdJob = null
+        cancelHoldProgress()
+    }
+
+    /** Brings the editor forward WITHOUT killing the bubble: it returns on minimize. */
+    private fun openEditor() {
+        runCatching {
+            startActivity(
+                restoreIntent().addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
+                ),
+            )
+        }
+        // the editor is on screen now, so the bubble would only sit on top of it
+        dropView()
+    }
+
+    /**
+     * Draws the bubble: cream disc, shadow, optional thumbnail or the brand spark, and the
+     * hold progress arc. No text is drawn — a 64 dp circle has no room for a sentence.
+     */
+    private inner class BubbleDrawable(private val thumb: android.graphics.Bitmap?) : Drawable() {
+        private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFF9F7.toInt() }
+        private val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x3C000000 }
+        private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF7A0C2E.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = dp(3).toFloat()
+            strokeCap = Paint.Cap.ROUND
+        }
+        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFF9F7.toInt()
+            textSize = dp(26).toFloat()
+            textAlign = Paint.Align.CENTER
+        }
+
+        override fun draw(canvas: Canvas) {
+            val w = bounds.width().toFloat()
+            val h = bounds.height().toFloat()
+            val c = min(w, h) / 2f
+            val inset = dp(4).toFloat()
+            canvas.drawCircle(w / 2f, h / 2f + dp(2).toFloat(), c - inset, shadow)
+            canvas.drawCircle(w / 2f, h / 2f, c - inset, fill)
+            val picture = thumb
+            if (picture != null && !picture.isRecycled) {
+                val scale = (c - inset - dp(5)) / (min(picture.width, picture.height) / 2f)
+                val dx = w / 2f - picture.width * scale
+                val dy = h / 2f - picture.height * scale
+                canvas.save()
+                canvas.clipPath(android.graphics.Path().apply {
+                    addCircle(w / 2f, h / 2f, c - inset - dp(5), android.graphics.Path.Direction.CW)
+                })
+                canvas.drawBitmap(
+                    picture, null,
+                    android.graphics.RectF(dx, dy, dx + picture.width * scale, dy + picture.height * scale),
+                    fill,
+                )
+                canvas.restore()
+            } else {
+                canvas.drawCircle(w / 2f, h / 2f, c - inset - dp(5), Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = 0xFF7A0C2E.toInt()
+                })
+                canvas.drawText("✦", w / 2f, h / 2f + textPaint.textSize / 3f, textPaint)
+            }
+            if (holdProgress > 0f) {
+                canvas.drawArc(
+                    inset, inset, w - inset, h - inset,
+                    -90f, 360f * holdProgress, false, ring,
+                )
+            }
+        }
+
+        override fun setAlpha(alpha: Int) {
+            fill.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) = Unit
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    @Composable
-    private fun BubbleContentRoot() {
-        val localView = LocalView.current
-        fun haptic(kind: Int) = localView.performHapticFeedback(kind)
-
-        BubbleContent(
-            thumb = thumb,
-            onDragStart = { scheduleIdle() },
-            onDrag = { dx, dy -> dragBy(dx, dy) },
-            onDragEnd = { snapToEdge() },
-            onTap = {
-                // bring the editor back WITHOUT killing the bubble: it returns on minimize
-                runCatching {
-                    startActivity(
-                        restoreIntent().addFlags(
-                            Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
-                        ),
-                    )
-                }
-            },
-            onClose = {
-                haptic(android.view.HapticFeedbackConstants.LONG_PRESS)
-                closeApp()
-            },
-        )
-    }
-
-    private fun dragBy(dx: Float, dy: Float) {
-        val p = params ?: return
-        val v = view ?: return
-        val dm = resources.displayMetrics
-        p.x = (p.x + dx.toInt()).coerceIn(-dp(10), dm.widthPixels - dp(20))
-        p.y = (p.y + dy.toInt()).coerceIn(dp(24), dm.heightPixels - dp(120))
-        runCatching { windowManager.updateViewLayout(v, p) }
-        scheduleIdle()
-    }
-
-    private fun snapToEdge() {
-        val p = params ?: return
-        val v = view ?: return
-        val dm = resources.displayMetrics
-        p.x = if (p.x + p.width / 2 < dm.widthPixels / 2) -dp(20) else dm.widthPixels - p.width + dp(20)
-        runCatching { windowManager.updateViewLayout(v, p) }
-        scheduleIdle()
-    }
-
-    private fun scheduleIdle() {
-        BubbleState.reduce.value = false
-        idleJob?.cancel()
-        idleJob = scope.launch {
-            delay(3000)
-            BubbleState.reduce.value = true
-        }
-    }
-
-    /** Editor reopened: remove the bubble but keep the draft for the next minimize. */
-    private fun hideBubble() {
-        idleJob?.cancel()
-        runCatching { if (view != null) windowManager.removeView(view) }
-        view = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    private fun closeApp() {
-        runCatching { if (view != null) windowManager.removeView(view) }
-        view = null
-        val id = sessionId
-        scope.launch { DraftStore.clear(this@BubbleService, id) }
-        // Ask the editor (if still alive) to finish, then stop the service.
-        runCatching {
-            startActivity(
-                Intent(this, EditorActivity::class.java).apply {
-                    action = ACTION_FINISH_APP
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                },
-            )
-        }
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    override fun onDestroy() {
-        BubbleState.markRunning(false)
-        idleJob?.cancel()
-        runCatching { unregisterReceiver(screenReceiver) }
-        runCatching { if (view != null) windowManager.removeView(view) }
-        view = null
-        thumb?.recycle()
-        thumb = null
-        super.onDestroy()
-    }
-
-    companion object {
-        const val ACTION_CLOSE = "com.emrobinso.floatpic.bubble.CLOSE"
-        const val ACTION_FINISH_APP = "com.emrobinso.floatpic.FINISH_APP"
-        const val ACTION_UPDATE_NOTIF = "com.emrobinso.floatpic.bubble.UPDATE_NOTIF"
-        const val ACTION_RESTORE = "com.emrobinso.floatpic.bubble.RESTORE"
-        const val ACTION_HIDE = "com.emrobinso.floatpic.bubble.HIDE"
-        const val ACTION_EDITOR_SHOWN = "com.emrobinso.floatpic.bubble.EDITOR_SHOWN"
-        const val EXTRA_SESSION = "bubble.session"
-        const val EXTRA_THUMB_URI = "bubble.thumb"
-        private const val CHANNEL_ID = "floatpic_bubble"
-        private const val NOTIFICATION_ID = 42
-
-        /** Bubble with no draft behind it: tapping only brings the editor back. */
-        fun startEmpty(context: Context) {
-            val intent = Intent(context, BubbleService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
-        }
-
-        /** The editor is visible: hide the bubble but keep the service for the next minimize. */
-        fun editorShown(context: Context) {
-            runCatching {
-                context.startService(
-                    Intent(context, BubbleService::class.java).setAction(ACTION_EDITOR_SHOWN),
-                )
-            }
-        }
-
-        fun start(context: Context, sessionId: String, thumbUri: Uri?) {
-            val intent = Intent(context, BubbleService::class.java).apply {
-                putExtra(EXTRA_SESSION, sessionId)
-                putExtra(EXTRA_THUMB_URI, thumbUri?.toString())
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
-        }
-
-        fun hide(context: Context) {
-            runCatching {
-                context.startService(
-                    Intent(context, BubbleService::class.java).setAction(ACTION_HIDE),
-                )
-            }
-        }
-
-        fun updateNotification(context: Context) {
-            runCatching {
-                context.startService(
-                    Intent(context, BubbleService::class.java).setAction(ACTION_UPDATE_NOTIF),
-                )
-            }
-        }
-
-        fun canDrawOverlays(context: Context): Boolean =
-            android.provider.Settings.canDrawOverlays(context)
-
-        val isRunning: Boolean get() = BubbleState.isRunning
-    }
 }
 
-/** UI state shared between the service and the bubble composable. */
+/** What the rest of the app needs to know about the service. */
 object BubbleState {
-    /** true while the service (and so the bubble launcher) is alive */
+    /** true while the service (and so the bubble) is alive */
     var isRunning: Boolean = false
         private set
 
     fun markRunning(on: Boolean) {
         isRunning = on
     }
-
-    val reduce = mutableStateOf(false)
-}
-
-@Composable
-private fun BubbleContent(
-    thumb: android.graphics.Bitmap?,
-    onDragStart: () -> Unit,
-    onDrag: (Float, Float) -> Unit,
-    onDragEnd: () -> Unit,
-    onTap: () -> Unit,
-    onClose: () -> Unit,
-) {
-    var pressed by remember { mutableStateOf(false) }
-    var dragging by remember { mutableStateOf(false) }
-    val hapticView = LocalView.current
-    var lastTick by remember { mutableStateOf(0) }
-    val progress = rememberHoldProgress(pressed = pressed, dragging = dragging, onClose = onClose)
-    LaunchedEffect(progress) {
-        val bucket = when {
-            progress >= 1f -> 2
-            progress >= 0.72f -> 1
-            progress >= 0.30f -> 0
-            else -> -1
-        }
-        if (bucket > lastTick) {
-            lastTick = bucket
-            hapticView.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-        } else if (bucket < lastTick) {
-            lastTick = bucket
-        }
-    }
-    val reduce = BubbleState.reduce.value
-    val scale by animateFloatAsState(
-        targetValue = if (reduce && !pressed) 0.78f else 1f,
-        label = "bubbleScale",
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .scale(scale)
-            .bubbleGestures(
-                onPressChange = { pressed = it },
-                onDragStart = { dragging = true; onDragStart() },
-                onDrag = onDrag,
-                onDragEnd = { dragging = false; onDragEnd() },
-                onTap = onTap,
-            ),
-    ) {
-        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
-            val inset = 3.dp.toPx()
-            drawIntoCanvas { canvas ->
-                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-                val r = min(size.width, size.height) / 2f - inset
-                // drop shadow
-                paint.color = android.graphics.Color.argb(60, 0, 0, 0)
-                canvas.nativeCanvas.drawCircle(
-                    size.width / 2f, size.height / 2f + 2.dp.toPx() * 2f, r, paint,
-                )
-                paint.color = android.graphics.Color.parseColor("#FFF9F7")
-                canvas.nativeCanvas.drawCircle(size.width / 2f, size.height / 2f, r, paint)
-            }
-            if (progress > 0f) {
-                drawArc(
-                    color = Color(0xFF7A0C2E),
-                    startAngle = -90f,
-                    sweepAngle = 360f * progress,
-                    useCenter = false,
-                    topLeft = Offset(inset, inset),
-                    size = Size(size.width - inset * 2, size.height - inset * 2),
-                    style = Stroke(width = 3.dp.toPx()),
-                )
-            }
-        }
-        if (thumb != null) {
-            val img = remember(thumb) { thumb.asImageBitmap() }
-            Image(
-                bitmap = img,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(9.dp)
-                    .clip(CircleShape),
-            )
-        } else {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(9.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF7A0C2E)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("✦", color = Color(0xFFFFF9F7), fontSize = 20.sp)
-            }
-        }
-        if (progress > 0f) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                Text(
-                    text = getStringStatic(R.string.bubble_hold_hint),
-                    color = Color(0xFFFFF9F7),
-                    fontSize = 6.sp,
-                    lineHeight = 6.sp,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .background(Color(0xE67A0C2E), RoundedCornerShape(3.dp))
-                        .padding(horizontal = 2.dp, vertical = 1.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun getStringStatic(id: Int): String =
-    androidx.compose.ui.platform.LocalContext.current.getString(id)
-
-/**
- * Gesture contract:
- *  - move > slop  -> drag (hold cancelled)
- *  - hold 1.6 s   -> tick haptics at 30% / 72% -> close
- *  - release      -> tap (open editor), unless close already fired
- */
-private fun Modifier.bubbleGestures(
-    onPressChange: (Boolean) -> Unit,
-    onDragStart: () -> Unit,
-    onDrag: (Float, Float) -> Unit,
-    onDragEnd: () -> Unit,
-    onTap: () -> Unit,
-): Modifier = pointerInput(Unit) {
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        onPressChange(true)
-        var dragging = false
-        val slop = 12.dp.toPx()
-        try {
-            while (true) {
-                val event = awaitPointerEvent()
-                val change = event.changes.firstOrNull { it.id == down.id }
-                if (change == null || !change.pressed) break
-                if (!dragging && (change.position - down.position).getDistance() > slop) {
-                    dragging = true
-                    onDragStart()
-                }
-                if (dragging) {
-                    val delta = change.positionChange()
-                    if (delta.x != 0f || delta.y != 0f) onDrag(delta.x, delta.y)
-                    change.consume()
-                }
-            }
-            if (dragging) onDragEnd() else onTap()
-        } finally {
-            onPressChange(false)
-        }
-    }
-}
-
-/**
- * Hold timer driven by frame ticks (survives "no more pointer events while held").
- * Returns 0..1 progress; fires [onClose] once per 1.6 s hold.
- */
-@Composable
-private fun rememberHoldProgress(
-    pressed: Boolean,
-    dragging: Boolean,
-    onClose: () -> Unit,
-): Float {
-    var progress by remember { mutableStateOf(0f) }
-    LaunchedEffect(pressed, dragging) {
-        if (!pressed || dragging) {
-            progress = 0f
-            return@LaunchedEffect
-        }
-        var elapsed = 0L
-        while (elapsed < HOLD_MS) {
-            delay(16)
-            elapsed += 16
-            progress = (elapsed.toFloat() / HOLD_MS).coerceIn(0f, 1f)
-        }
-        progress = 0f
-        onClose()
-    }
-    return progress
 }
 
 private const val HOLD_MS = 1600L

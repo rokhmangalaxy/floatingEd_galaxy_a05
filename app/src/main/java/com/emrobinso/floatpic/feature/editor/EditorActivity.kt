@@ -152,6 +152,12 @@ class EditorActivity : ComponentActivity() {
         else Toast.makeText(this, R.string.bubble_permission_denied, Toast.LENGTH_SHORT).show()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // never leave the bubble on top of the editor it just opened
+        if (BubbleService.isRunning) runCatching { BubbleService.editorShown(this) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -200,28 +206,9 @@ class EditorActivity : ComponentActivity() {
                 val ui by vm.ui.collectAsState()
             val scope = rememberCoroutineScope()
             var showMinimizePrompt by remember { mutableStateOf(false) }
-            // the "start the bubble" sheet, shown once on a cold start until it is dismissed
-            var showBubbleSheet by remember { mutableStateOf(false) }
-            var overlayGranted by remember { mutableStateOf(BubbleService.canDrawOverlays(this@EditorActivity)) }
-            var bubbleRunning by remember { mutableStateOf(BubbleService.isRunning) }
 
-            // Cold start = no picture and no draft: show the permission/setup sheet so the
-            // bubble can be switched on with one tap instead of being hidden behind minimize.
-            LaunchedEffect(Unit) {
-                val prefs = getSharedPreferences("floatpic_bubble", MODE_PRIVATE)
-                if (!prefs.getBoolean("sheet_dismissed", false)) showBubbleSheet = true
-            }
-            // returning from the system settings page: re-read the toggle
-            androidx.compose.runtime.DisposableEffect(Unit) {
-                val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-                    if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                        overlayGranted = BubbleService.canDrawOverlays(this@EditorActivity)
-                        bubbleRunning = BubbleService.isRunning
-                    }
-                }
-                lifecycle.addObserver(observer)
-                onDispose { lifecycle.removeObserver(observer) }
-            }
+            // NOTE: no setup sheet here any more. The launcher is HomeActivity now, and it
+            // owns the permission + bubble switch; this activity is only the editor.
             // floating card position: dragging the grabber moves the whole card.
             // IMPORTANT: kept as two plain Floats. androidx.compose.ui.geometry.Offset is
             // NOT Bundle-saveable, and putting it in rememberSaveable made the activity
@@ -490,28 +477,6 @@ class EditorActivity : ComponentActivity() {
                         }
                     }
 
-                    if (showBubbleSheet) {
-                        BubbleSetupSheet(
-                            granted = overlayGranted,
-                            running = bubbleRunning,
-                            onGrant = { requestOverlayPermission() },
-                            onToggleBubble = {
-                                if (bubbleRunning) {
-                                    BubbleService.hide(this@EditorActivity)
-                                    bubbleRunning = false
-                                } else {
-                                    BubbleService.startEmpty(this@EditorActivity)
-                                    bubbleRunning = true
-                                }
-                            },
-                            onDismiss = {
-                                showBubbleSheet = false
-                                getSharedPreferences("floatpic_bubble", MODE_PRIVATE)
-                                    .edit().putBoolean("sheet_dismissed", true).apply()
-                            },
-                        )
-                    }
-
                     if (showMinimizePrompt) {
                         MinimizeDialog(
                             title = ctx.getString(R.string.bubble_permission_title),
@@ -577,8 +542,10 @@ class EditorActivity : ComponentActivity() {
 
         val sessionId = intent.getStringExtra(EXTRA_RESTORE_SESSION)
         if (sessionId != null) {
-            // the editor is taking over: the bubble must not float above it
-            runCatching { BubbleService.hide(this) }
+            // the bubble opened the editor: hide the bubble view but KEEP the service, so it
+            // returns immediately on minimize (this used to stop the service for good, which
+            // is why "floating" died after one round-trip)
+            runCatching { BubbleService.editorShown(this) }
             restoreSession(sessionId)
             return
         }
@@ -621,22 +588,6 @@ class EditorActivity : ComponentActivity() {
         }
     }
 
-    /** Opens the system overlay permission page and comes back to the sheet. */
-    private fun requestOverlayPermission() {
-        val launched = runCatching {
-            overlayLauncher.launch(
-                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
-            )
-        }.isSuccess
-        if (!launched) {
-            runCatching {
-                overlayLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
-            }.onFailure {
-                Toast.makeText(this, R.string.bubble_permission_denied, Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
     private fun requestOverlayThenMinimize(scope: CoroutineScope) {
         if (BubbleService.canDrawOverlays(this)) {
             minimize(scope)
@@ -663,7 +614,9 @@ class EditorActivity : ComponentActivity() {
     private fun minimize(scope: CoroutineScope) {
         val bmp = vm.source
         if (bmp == null) {
-            finish()
+            // no picture yet: the bubble still makes sense as a show/hide toggle
+            BubbleService.startEmpty(this)
+            finishAndRemoveTask()
             return
         }
         scope.launch {
@@ -889,125 +842,6 @@ private fun MinimizeDialog(
                             containerColor = MaterialTheme.colorScheme.primary,
                         ),
                     ) { Text(confirm) }
-                }
-            }
-        }
-    }
-}
-
-/**
- * The bubble setup sheet shown on a cold start: one place to grant "display over other apps",
- * switch the bubble on, and understand what the bubble does (tap = show/hide the editor).
- */
-@Composable
-private fun BubbleSetupSheet(
-    granted: Boolean,
-    running: Boolean,
-    onGrant: () -> Unit,
-    onToggleBubble: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val scheme = MaterialTheme.colorScheme
-    val ctx = LocalContext.current
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = .5f))
-            .clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = scheme.surface,
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .clickable(
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    indication = null,
-                    onClick = {},
-                ),
-        ) {
-            Column(Modifier.padding(22.dp)) {
-                Text(
-                    ctx.getString(R.string.sheet_title),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 17.sp,
-                    color = scheme.onSurface,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    ctx.getString(R.string.sheet_body),
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp,
-                    color = scheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(14.dp))
-
-                // step 1: the system permission
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            ctx.getString(R.string.sheet_step_one),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = scheme.onSurface,
-                        )
-                        Text(
-                            ctx.getString(if (granted) R.string.sheet_granted else R.string.sheet_not_granted),
-                            fontSize = 11.sp,
-                            color = if (granted) scheme.primary else scheme.error,
-                        )
-                    }
-                    Button(
-                        onClick = onGrant,
-                        enabled = !granted,
-                        colors = ButtonDefaults.buttonColors(containerColor = scheme.primary),
-                    ) {
-                        Text(ctx.getString(if (granted) R.string.sheet_granted_short else R.string.sheet_grant))
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-
-                // step 2: the bubble switch (disabled until the permission is there)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            ctx.getString(R.string.sheet_step_two),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = scheme.onSurface,
-                        )
-                        Text(
-                            ctx.getString(
-                                if (running) R.string.sheet_bubble_on else R.string.sheet_bubble_off,
-                            ),
-                            fontSize = 11.sp,
-                            color = scheme.onSurfaceVariant,
-                        )
-                    }
-                    Button(
-                        onClick = onToggleBubble,
-                        enabled = granted,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (running) scheme.error else scheme.primary,
-                        ),
-                    ) {
-                        Text(
-                            ctx.getString(
-                                if (running) R.string.sheet_bubble_stop else R.string.sheet_bubble_start,
-                            ),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) {
-                        Text(ctx.getString(R.string.sheet_dismiss))
-                    }
                 }
             }
         }
