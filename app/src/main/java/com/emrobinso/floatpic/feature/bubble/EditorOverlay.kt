@@ -171,11 +171,15 @@ class EditorOverlay(
         var cardY by remember { mutableFloatStateOf(0f) }
         var cardW by remember { mutableFloatStateOf(0f) }
         var cardH by remember { mutableFloatStateOf(0f) }
+        // measured size of the overlay window itself. displayMetrics reports the APP area
+        // (screen minus the status and navigation bars) while the overlay window covers the
+        // whole display, so a limit derived from it stopped the card short of the top and
+        // bottom edges. The window's own height is the only honest number.
+        var rootW by remember { mutableFloatStateOf(0f) }
+        var rootH by remember { mutableFloatStateOf(0f) }
         val density = androidx.compose.ui.platform.LocalDensity.current
-        val metrics = remember { context.resources.displayMetrics }
-        val screenWpx = metrics.widthPixels.toFloat()
-        val screenHpx = metrics.heightPixels.toFloat()
-        val maxShiftX = ((screenWpx - cardW) / 2f).coerceAtLeast(0f)
+        val screenHpx = rootH
+        val maxShiftX = ((rootW - cardW) / 2f).coerceAtLeast(0f)
         val maxShiftY = ((screenHpx - cardH) / 2f).coerceAtLeast(0f)
 
         // autosave: 1.2 s after the last real edit
@@ -189,7 +193,9 @@ class EditorOverlay(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = .22f)),
+                    // no dim layer: the user asked for a floating editor, not an app with a
+                    // dark backdrop. Only the card paints; everything around it stays clear.
+                    .onSizeChanged { rootW = it.width.toFloat(); rootH = it.height.toFloat() },
                 contentAlignment = Alignment.Center,
             ) {
                 Box(

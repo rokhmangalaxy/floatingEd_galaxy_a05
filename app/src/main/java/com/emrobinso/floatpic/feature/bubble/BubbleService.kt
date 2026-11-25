@@ -58,6 +58,8 @@ class BubbleService : Service() {
     private var sessionRef: EditorSessionState? = null
     private var editor: EditorOverlay? = null
 
+    private val prefs by lazy { getSharedPreferences("floatpic_bubble", Context.MODE_PRIVATE) }
+
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
@@ -321,8 +323,16 @@ class BubbleService : Service() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = dm.widthPixels - sizePx + dp(8)
-            y = dm.heightPixels / 2
+            val savedX = prefs.getInt(KEY_X, Int.MIN_VALUE)
+            val savedY = prefs.getInt(KEY_Y, Int.MIN_VALUE)
+            if (savedX != Int.MIN_VALUE && savedY != Int.MIN_VALUE) {
+                // the bubble belongs where the user last left it, not back at mid-screen
+                x = savedX.coerceIn(0, (dm.widthPixels - sizePx).coerceAtLeast(0))
+                y = savedY.coerceIn(0, (dm.heightPixels - sizePx).coerceAtLeast(0))
+            } else {
+                x = dm.widthPixels - sizePx + dp(8)
+                y = dm.heightPixels / 2
+            }
         }
         params = p
         val image = ImageView(this).apply {
@@ -361,9 +371,11 @@ class BubbleService : Service() {
                 if (dragging) {
                     val moveX = (event.rawX - lastX).toInt()
                     val moveY = (event.rawY - lastY).toInt()
-                    val dm = resources.displayMetrics
-                    p.x = (p.x + moveX).coerceIn(-dp(10), dm.widthPixels - dp(20))
-                    p.y = (p.y + moveY).coerceIn(dp(24), dm.heightPixels - dp(120))
+                    // let the bubble travel the full screen: nowhere it can be parked becomes
+                    // unreachable, and the clamp matches the window, not a guessed margin
+                    p.x += moveX
+                    p.y += moveY
+                    clampToScreen(p)
                     lastX = event.rawX
                     lastY = event.rawY
                     runCatching { windowManager.updateViewLayout(v, p) }
@@ -377,6 +389,7 @@ class BubbleService : Service() {
                 } else if (event.actionMasked == MotionEvent.ACTION_UP) {
                     openEditor()
                 }
+                rememberPosition(p)
                 dragging = false
                 scheduleIdle()
             }
@@ -481,12 +494,26 @@ class BubbleService : Service() {
         override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
     }
 
+    private fun clampToScreen(p: WindowManager.LayoutParams) {
+        val dm = resources.displayMetrics
+        p.x = p.x.coerceIn(0, (dm.widthPixels - p.width).coerceAtLeast(0))
+        p.y = p.y.coerceIn(0, (dm.heightPixels - p.height).coerceAtLeast(0))
+    }
+
     private fun snapToEdge() {
         val p = params ?: return
         val v = view ?: return
         val dm = resources.displayMetrics
+        // horizontal snapping only: the vertical spot is a deliberate choice and is kept
         p.x = if (p.x + p.width / 2 < dm.widthPixels / 2) 0 else dm.widthPixels - p.width
+        clampToScreen(p)
+        rememberPosition(p)
         runCatching { windowManager.updateViewLayout(v, p) }
+    }
+
+    /** Position survives a minimize / new bubble: stored in prefs, read when it is re-added. */
+    private fun rememberPosition(p: WindowManager.LayoutParams) {
+        prefs.edit().putInt(KEY_X, p.x).putInt(KEY_Y, p.y).apply()
     }
 
     private fun scheduleIdle() {
@@ -549,6 +576,8 @@ class BubbleService : Service() {
         const val EXTRA_SESSION = "bubble.session"
         const val EXTRA_THUMB_URI = "bubble.thumb"
         private const val CHANNEL_ID = "floatpic_bubble"
+        private const val KEY_X = "bubble_x"
+        private const val KEY_Y = "bubble_y"
         private const val NOTIFICATION_ID = 42
 
         /** Bubble with no picture behind it: tapping only brings the editor back. */
