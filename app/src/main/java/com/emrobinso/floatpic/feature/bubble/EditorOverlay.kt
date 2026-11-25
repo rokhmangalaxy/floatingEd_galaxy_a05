@@ -43,6 +43,7 @@ import com.emrobinso.floatpic.data.HistoryStore
 import com.emrobinso.floatpic.feature.editor.EditorScreen
 import com.emrobinso.floatpic.ui.rememberHaptics
 import com.emrobinso.floatpic.ui.theme.FloatPicTheme
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
@@ -59,6 +60,13 @@ class OverlayComposeView(context: Context) :
     LifecycleOwner,
     ViewModelStoreOwner,
     SavedStateRegistryOwner {
+
+    /** set before the view is added to a window */
+    var content: (@Composable () -> Unit)? = null
+
+    override fun Content() {
+        content?.invoke()
+    }
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val store = ViewModelStore()
@@ -132,7 +140,7 @@ class EditorOverlay(
         }
         params = p
         val compose = OverlayComposeView(context)
-        compose.setContent { EditorOverlayContent() }
+        compose.content = { EditorOverlayContent() }
         view = compose
         windowManager.addView(compose, p)
     }

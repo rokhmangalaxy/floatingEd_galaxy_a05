@@ -10,7 +10,7 @@ import androidx.compose.runtime.setValue
 import com.emrobinso.floatpic.R
 import com.emrobinso.floatpic.core.image.ImageLoader
 import com.emrobinso.floatpic.data.AiEditClient
-import com.emrobinso.floatpic.data.DraftSnapshot
+import com.emrobinso.floatpic.feature.editor.DraftSnapshot
 import com.emrobinso.floatpic.data.DraftStore
 import com.emrobinso.floatpic.data.Exporter
 import com.emrobinso.floatpic.data.HistoryEntry

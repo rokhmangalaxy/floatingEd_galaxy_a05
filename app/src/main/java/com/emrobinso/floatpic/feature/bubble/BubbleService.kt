@@ -193,15 +193,18 @@ class BubbleService : Service() {
 
     private fun closeEditor() {
         val state = sessionRef
-        if (state != null) {
-            runCatching { state.autosave(force = true) }
-            runCatching { state.saveDraft("session_${System.currentTimeMillis()}") }
-        }
         editor?.hide()
         editor = null
         sessionRef = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+        if (state != null) {
+            // suspend calls belong in the service scope, not in this plain function
+            scope.launch {
+                runCatching { state.autosave(force = true) }
+                runCatching { state.saveDraft("session_${System.currentTimeMillis()}") }
+            }
+        }
     }
 
     private fun openGallery() {
