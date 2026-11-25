@@ -411,8 +411,128 @@ class BubbleService : Service() {
         override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
     }
 
+    private fun snapToEdge() {
+        val p = params ?: return
+        val v = view ?: return
+        val dm = resources.displayMetrics
+        p.x = if (p.x + p.width / 2 < dm.widthPixels / 2) 0 else dm.widthPixels - p.width
+        runCatching { windowManager.updateViewLayout(v, p) }
+    }
+
+    private fun scheduleIdle() {
+        // the bubble used to shrink to 78 % after a while (Compose animateFloatAsState);
+        // with a plain View the idle timer only matters for the service lifecycle
+        idleJob?.cancel()
+        idleJob = scope.launch {
+            delay(3000)
+        }
+    }
+
+    /** Stops the bubble completely: the off switch on the home screen. */
+    private fun hideBubble() {
+        idleJob?.cancel()
+        cancelHold()
+        dropView()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    /** Hold 1.6 s: clear the draft, close the editor if it is alive, stop the service. */
+    private fun closeApp() {
+        cancelHold()
+        dropView()
+        val id = sessionId
+        if (id != null) scope.launch { DraftStore.clear(this@BubbleService, id) }
+        runCatching {
+            startActivity(
+                Intent(this, EditorActivity::class.java).apply {
+                    action = ACTION_FINISH_APP
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                },
+            )
+        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    override fun onDestroy() {
+        BubbleState.markRunning(false)
+        idleJob?.cancel()
+        cancelHold()
+        runCatching { unregisterReceiver(screenReceiver) }
+        dropView()
+        thumb?.recycle()
+        thumb = null
+        super.onDestroy()
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    companion object {
+        const val ACTION_CLOSE = "com.emrobinso.floatpic.bubble.CLOSE"
+        const val ACTION_FINISH_APP = "com.emrobinso.floatpic.FINISH_APP"
+        const val ACTION_UPDATE_NOTIF = "com.emrobinso.floatpic.bubble.UPDATE_NOTIF"
+        const val ACTION_RESTORE = "com.emrobinso.floatpic.bubble.RESTORE"
+        const val ACTION_HIDE = "com.emrobinso.floatpic.bubble.HIDE"
+        const val ACTION_EDITOR_SHOWN = "com.emrobinso.floatpic.bubble.EDITOR_SHOWN"
+        const val EXTRA_SESSION = "bubble.session"
+        const val EXTRA_THUMB_URI = "bubble.thumb"
+        private const val CHANNEL_ID = "floatpic_bubble"
+        private const val NOTIFICATION_ID = 42
+
+        /** Bubble with no picture behind it: tapping only brings the editor back. */
+        fun startEmpty(context: Context) {
+            val intent = Intent(context, BubbleService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /** The editor is visible: hide the bubble but keep the service for the next minimize. */
+        fun editorShown(context: Context) {
+            runCatching {
+                context.startService(
+                    Intent(context, BubbleService::class.java).setAction(ACTION_EDITOR_SHOWN),
+                )
+            }
+        }
+
+        fun start(context: Context, sessionId: String, thumbUri: Uri?) {
+            val intent = Intent(context, BubbleService::class.java).apply {
+                putExtra(EXTRA_SESSION, sessionId)
+                putExtra(EXTRA_THUMB_URI, thumbUri?.toString())
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /** Stops the bubble for good (the off switch on the home screen). */
+        fun hide(context: Context) {
+            runCatching {
+                context.startService(
+                    Intent(context, BubbleService::class.java).setAction(ACTION_CLOSE),
+                )
+            }
+        }
+
+        fun updateNotification(context: Context) {
+            runCatching {
+                context.startService(
+                    Intent(context, BubbleService::class.java).setAction(ACTION_UPDATE_NOTIF),
+                )
+            }
+        }
+
+        fun canDrawOverlays(context: Context): Boolean =
+            android.provider.Settings.canDrawOverlays(context)
+
+        val isRunning: Boolean get() = BubbleState.isRunning
+    }
 }
 
 /** What the rest of the app needs to know about the service. */
