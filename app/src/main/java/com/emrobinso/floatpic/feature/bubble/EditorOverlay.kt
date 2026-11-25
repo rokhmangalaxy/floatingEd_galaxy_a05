@@ -7,20 +7,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.AbstractComposeView
-import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
@@ -33,18 +26,11 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.emrobinso.floatpic.data.HistoryStore
 import com.emrobinso.floatpic.feature.editor.EditorScreen
 import com.emrobinso.floatpic.ui.rememberHaptics
 import com.emrobinso.floatpic.ui.theme.FloatPicTheme
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /**
  * A ComposeView that brings its own lifecycle + saved-state owners.
@@ -102,9 +88,13 @@ class OverlayComposeView(context: Context) :
 }
 
 /**
- * The editor as a REAL system overlay: a full-screen window of type APPLICATION_OVERLAY that
- * carries the same [EditorScreen] the Activity used to show, with the floating card centred
- * inside it and the rest of the window transparent so the app behind stays visible.
+ * The editor as a REAL system overlay, but the window is only as big as the CARD.
+ *
+ * A screen-sized window was the reason the app behind could be seen but not touched: an
+ * overlay window swallows every touch inside its bounds, transparent pixels included. Sizing
+ * the window to the card means the app behind keeps all the space around it — you can scroll
+ * and tap it while the editor floats on top, and the card reaches the very edges of the
+ * screen because the window travels with it instead of being pinned to the middle.
  */
 class EditorOverlay(
     private val context: Context,
@@ -116,14 +106,22 @@ class EditorOverlay(
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var view: OverlayComposeView? = null
     private var params: WindowManager.LayoutParams? = null
+    private var cardWidthPx = 0
+    private var cardHeightPx = 0
+    private var cardX = 0f
+    private var cardY = 0f
 
     val isShowing: Boolean get() = view != null
 
     fun show() {
         if (view != null) return
+        val dm = context.resources.displayMetrics
+        // 80 % of the width, capped by 82 % of the height so a tall card still fits
+        cardWidthPx = (dm.widthPixels * 0.80f).toInt()
+        cardHeightPx = (dm.heightPixels * 0.80f).toInt()
         val p = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            cardWidthPx,
+            cardHeightPx,
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
@@ -135,8 +133,10 @@ class EditorOverlay(
             android.graphics.PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 0
+            // centred in what displayMetrics calls the app area; the card can travel from
+            // here to any edge of the screen
+            x = (dm.widthPixels - cardWidthPx) / 2
+            y = (dm.heightPixels - cardHeightPx) / 2
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
         params = p
@@ -155,32 +155,27 @@ class EditorOverlay(
         v.dispose()
     }
 
-    fun updateLayout() {
+    /**
+     * Moves the window by the card offset. The window travels instead of the card inside a
+     * big window: that is what keeps the rest of the screen usable.
+     */
+    private fun applyLayout() {
         val p = params ?: return
         val v = view ?: return
+        val dm = context.resources.displayMetrics
+        val baseX = (dm.widthPixels - cardWidthPx) / 2
+        val baseY = (dm.heightPixels - cardHeightPx) / 2
+        p.x = (baseX + cardX).toInt().coerceIn(0, (dm.widthPixels - cardWidthPx).coerceAtLeast(0))
+        p.y = (baseY + cardY).toInt().coerceIn(0, (dm.heightPixels - cardHeightPx).coerceAtLeast(0))
         runCatching { windowManager.updateViewLayout(v, p) }
     }
 
-    /** The overlay fills the screen; the card is centred with a small dim around it. */
+    /** The card IS the window, so it simply fills it. */
     @Composable
     private fun EditorOverlayContent() {
         val ui by session.vm.ui.collectAsState()
         val scope = rememberCoroutineScope()
         val haptics = rememberHaptics()
-        var cardX by remember { mutableFloatStateOf(0f) }
-        var cardY by remember { mutableFloatStateOf(0f) }
-        var cardW by remember { mutableFloatStateOf(0f) }
-        var cardH by remember { mutableFloatStateOf(0f) }
-        // measured size of the overlay window itself. displayMetrics reports the APP area
-        // (screen minus the status and navigation bars) while the overlay window covers the
-        // whole display, so a limit derived from it stopped the card short of the top and
-        // bottom edges. The window's own height is the only honest number.
-        var rootW by remember { mutableFloatStateOf(0f) }
-        var rootH by remember { mutableFloatStateOf(0f) }
-        val density = androidx.compose.ui.platform.LocalDensity.current
-        val screenHpx = rootH
-        val maxShiftX = ((rootW - cardW) / 2f).coerceAtLeast(0f)
-        val maxShiftY = ((screenHpx - cardH) / 2f).coerceAtLeast(0f)
 
         // autosave: 1.2 s after the last real edit
         androidx.compose.runtime.LaunchedEffect(ui.state, ui.dirty) {
@@ -190,110 +185,93 @@ class EditorOverlay(
         }
 
         FloatPicTheme(theme = ui.theme, dark = false) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    // no dim layer: the user asked for a floating editor, not an app with a
-                    // dark backdrop. Only the card paints; everything around it stays clear.
-                    .onSizeChanged { rootW = it.width.toFloat(); rootH = it.height.toFloat() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    Modifier
-                        .offset { IntOffset(cardX.roundToInt(), cardY.roundToInt()) }
-                        .fillMaxWidth(0.80f)
-                        .wrapContentHeight(Alignment.CenterVertically)
-                        .heightIn(max = (screenHpx / density.density * 0.82f).dp)
-                        .onSizeChanged { cardW = it.width.toFloat(); cardH = it.height.toFloat() }
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {},
-                        ),
-                ) {
-                    EditorScreen(
-                        state = ui.state,
-                        bitmap = session.vm.source,
-                        theme = ui.theme,
-                        loading = ui.loading,
-                        error = ui.error,
-                        canUndo = ui.canUndo,
-                        canRedo = ui.canRedo,
-                        history = session.history,
-                        thumbPath = { entry -> HistoryStore.filesOf(context, entry).thumb.absolutePath },
-                        haptics = haptics,
-                        modifier = Modifier.fillMaxSize(),
-                        onClose = onClose,
-                        onMinimize = onMinimize,
-                        onDeleteHistory = { entry ->
-                            scope.launch {
-                                HistoryStore.delete(context, entry.id)
-                                session.refreshHistory()
-                            }
-                        },
-                        historyCurrent = session.historyIndex,
-                        onStepHistory = { entry -> session.openHistoryEntry(entry) },
-                        onOpenHistory = { entry -> session.openHistoryEntry(entry) },
-                        onThemeToggle = {
-                            val next = ui.theme.toggled()
-                            session.vm.setTheme(next)
-                            session.theme = next
-                        },
-                        onUndo = session.vm::undo,
-                        onRedo = session.vm::redo,
-                        onAspect = session.vm::setAspect,
-                        onPreview = session.vm::previewTransform,
-                        onCommit = session.vm::commitTransform,
-                        onDrag = { dx, dy ->
-                            cardX = (cardX + dx).coerceIn(-maxShiftX, maxShiftX)
-                            cardY = (cardY + dy).coerceIn(-maxShiftY, maxShiftY)
-                        },
-                        onSave = { session.saveToGallery() },
-                        onCommitEdit = {
-                            scope.launch {
-                                session.currentRow = null
-                                session.autosave(force = true)
-                                session.refreshHistory()
-                            }
-                        },
-                        onShare = { session.shareNow() },
-                        onReset = session.vm::resetTransform,
-                        onAlign = session.vm::alignTo,
-                        onPadding = session.vm::setPadding,
-                        onCorner = session.vm::setCorner,
-                        onShadow = session.vm::toggleShadow,
-                        onBackground = session.vm::setBackground,
-                        onAmbient = session.vm::useAmbientBackground,
-                        onScaleMode = session.vm::setScaleMode,
-                        onRotatePreview = session.vm::previewRotation,
-                        onRotateCommit = session.vm::commitRotation,
-                        onResetEdits = {
-                            session.vm.resetEdits()
-                            haptics.tick()
-                        },
-                        onResetAll = {
-                            session.vm.resetAll()
-                            haptics.tick()
-                        },
-                        onFlipH = session.vm::flipHorizontal,
-                        onFlipV = session.vm::flipVertical,
-                        onText = session.vm::setText,
-                        onTextStyle = session.vm::setTextStyle,
-                        onTextSize = session.vm::setTextSize,
-                        onTextAnchor = session.vm::setTextAnchor,
-                        onTextRotationPreview = session.vm::previewTextRotation,
-                        onTextRotationCommit = session.vm::commitTextRotation,
-                        aiSession = session.ai,
-                        aiBase = { session.vm.aiSource() },
-                        aiBaseFile = { session.vm.baseFile() },
-                        onAiApply = { bmp -> session.applyAi(bmp) },
-                        onInfo = { msg ->
-                            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
-                        },
-                        onClearImage = { session.clearCurrent() },
-                        onPickImage = onOpenGallery,
-                    )
-                }
+            Box(Modifier.fillMaxSize()) {
+                EditorScreen(
+                    state = ui.state,
+                    bitmap = session.vm.source,
+                    theme = ui.theme,
+                    loading = ui.loading,
+                    error = ui.error,
+                    canUndo = ui.canUndo,
+                    canRedo = ui.canRedo,
+                    history = session.history,
+                    thumbPath = { entry -> HistoryStore.filesOf(context, entry).thumb.absolutePath },
+                    haptics = haptics,
+                    modifier = Modifier.fillMaxSize(),
+                    onClose = onClose,
+                    onMinimize = onMinimize,
+                    onDeleteHistory = { entry ->
+                        scope.launch {
+                            HistoryStore.delete(context, entry.id)
+                            session.refreshHistory()
+                        }
+                    },
+                    historyCurrent = session.historyIndex,
+                    onStepHistory = { entry -> session.openHistoryEntry(entry) },
+                    onOpenHistory = { entry -> session.openHistoryEntry(entry) },
+                    onThemeToggle = {
+                        val next = ui.theme.toggled()
+                        session.vm.setTheme(next)
+                        session.theme = next
+                    },
+                    onUndo = session.vm::undo,
+                    onRedo = session.vm::redo,
+                    onAspect = session.vm::setAspect,
+                    onPreview = session.vm::previewTransform,
+                    onCommit = session.vm::commitTransform,
+                    onDrag = { dx, dy ->
+                        val dm = context.resources.displayMetrics
+                        val maxX = ((dm.widthPixels - cardWidthPx) / 2f).coerceAtLeast(0f)
+                        val maxY = ((dm.heightPixels - cardHeightPx) / 2f).coerceAtLeast(0f)
+                        cardX = (cardX + dx).coerceIn(-maxX, maxX)
+                        cardY = (cardY + dy).coerceIn(-maxY, maxY)
+                        applyLayout()
+                    },
+                    onSave = { session.saveToGallery() },
+                    onCommitEdit = {
+                        scope.launch {
+                            session.currentRow = null
+                            session.autosave(force = true)
+                            session.refreshHistory()
+                        }
+                    },
+                    onShare = { session.shareNow() },
+                    onReset = session.vm::resetTransform,
+                    onAlign = session.vm::alignTo,
+                    onPadding = session.vm::setPadding,
+                    onCorner = session.vm::setCorner,
+                    onShadow = session.vm::toggleShadow,
+                    onBackground = session.vm::setBackground,
+                    onAmbient = session.vm::useAmbientBackground,
+                    onScaleMode = session.vm::setScaleMode,
+                    onRotatePreview = session.vm::previewRotation,
+                    onRotateCommit = session.vm::commitRotation,
+                    onResetEdits = {
+                        session.vm.resetEdits()
+                        haptics.tick()
+                    },
+                    onResetAll = {
+                        session.vm.resetAll()
+                        haptics.tick()
+                    },
+                    onFlipH = session.vm::flipHorizontal,
+                    onFlipV = session.vm::flipVertical,
+                    onText = session.vm::setText,
+                    onTextStyle = session.vm::setTextStyle,
+                    onTextSize = session.vm::setTextSize,
+                    onTextAnchor = session.vm::setTextAnchor,
+                    onTextRotationPreview = session.vm::previewTextRotation,
+                    onTextRotationCommit = session.vm::commitTextRotation,
+                    aiSession = session.ai,
+                    aiBase = { session.vm.aiSource() },
+                    aiBaseFile = { session.vm.baseFile() },
+                    onAiApply = { bmp -> session.applyAi(bmp) },
+                    onInfo = { msg ->
+                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onClearImage = { session.clearCurrent() },
+                    onPickImage = onOpenGallery,
+                )
             }
         }
     }
